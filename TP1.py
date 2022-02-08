@@ -246,15 +246,15 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
         accuracy_list.append(accuracy)
 
         #End training if early stop reach the patience
-        if early_stop[1] == patience:
-            break 
+        #if early_stop[1] == patience:
+        #   break 
 
     
     return model, loss_list_train,loss_list_valid, accuracy_list 
 
 #%%
 #HyperParameters
-Niter,Bsize,lr = 150 , 32, 0.0001
+Niter,Bsize,lr = 500 , 32, 0.0001
 
 #Data import
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler

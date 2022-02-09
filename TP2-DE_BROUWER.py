@@ -1,12 +1,18 @@
 #%%
 model_name = 'DenseNet121'
 optimizer_name = 'Adam'
+learning_rate = 0.001
+optimizer_name = "Adam"
+batch_size = 32
+n_epochs = 1
+path_model = 'Models/DenseNet121_Adam_epochs_50.pth'
 
 
 
 
 
 #%%
+from xml.dom import ValidationErr
 from sklearn.metrics import accuracy_score
 from models_cifar_10.densenet import DenseNet121
 
@@ -16,6 +22,7 @@ import numpy as np
 from torch.utils.data import Subset
 from torch.utils.data.sampler import SubsetRandomSampler
 import torchvision.models
+#from torchinfo import summary
 
 import torchvision.transforms as transforms
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
@@ -31,46 +38,73 @@ from tqdm import tqdm
 import torch.quantization
 
 
+trainloader = DataLoader(minicifar_train, batch_size=batch_size, sampler=train_sampler)
+validloader = DataLoader(minicifar_train, batch_size=batch_size, sampler=valid_sampler)
+testloader = DataLoader(minicifar_test, batch_size=batch_size, shuffle=True) 
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-
-model = DenseNet121()
-state_dict = torch.load('./Models/DenseNet121_adam_epochs_50.pth',  map_location=device)['net']
-model.load_state_dict(state_dict)
 #model.eval()
+
+
+
+
+
 
 #%%
 
+def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_50.pth'):
+    
+    #Load of weights
+    model = torch.load(path, map_location=device)
 
-def train_model(model, train_loader, valid_loader, test_loader, learning_rate, EPOCHS, patience=30):
+    n_inputs, n_classes = 1024, 4
+    #Freeze weights
+    for param in model.parameters():
+        param.requires_grad = False
+    #Replaicng the last layer with a NN
+    model.linear = nn.Sequential(
+                        nn.Linear(n_inputs, 128), 
+                        nn.ReLU(), 
+                        nn.Dropout(0.4),
+                        nn.Linear(128, n_classes),                   
+                        nn.LogSoftmax(dim=1))
+
+    # Find total parameters and trainable parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f'{total_params:,} total parameters.')
+    total_trainable_params = sum(
+        p.numel() for p in model.parameters() if p.requires_grad)
+
+    print(f'{total_trainable_params:,} training parameters.')
+    return model
+
+
+def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, half = False, patience=30):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
   early_stop = [1000,0]
 
-  #Optimizer (Adam better)
-  if optimizer_name == 'SGD':
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-  else:
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-  #Loss
-  criterion = nn.CrossEntropyLoss()
+  if half :
+      model = model.half()
 
   for epoch in range(EPOCHS):
-    print(f"Epoch n° : {epoch}/{EPOCHS} commencée")
+    print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
     loss_train = 0
     
     #Training
     for i, data in tqdm(enumerate(train_loader, 0)):  
         inputs, labels = data
+        
+        if half :
+            inputs = inputs.half()
+
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
+
         #Clear the gradients
         optimizer.zero_grad()
-        
         #Forward + backward + optimize
         outputs = model(inputs)
         loss = criterion(outputs,labels)
@@ -87,10 +121,13 @@ def train_model(model, train_loader, valid_loader, test_loader, learning_rate, E
     #Validation 
     loss_valid = 0
     model.eval()
+
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
+
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
+
         target = model(inputs)
         # Find the Loss
         loss = criterion(target,labels)
@@ -118,13 +155,16 @@ def train_model(model, train_loader, valid_loader, test_loader, learning_rate, E
     with torch.no_grad():  # torch.no_grad for TESTING
         for data in tqdm(test_loader):
             images, labels = data
+
             if torch.cuda.is_available():
                 images, labels = images.to(device), labels.to(device)
+
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             accuracy = 100 * correct / total
+
     print('Accuracy of the network on test images: %d %%' % (
         100 * correct / total))
     accuracy_list.append(accuracy)
@@ -141,7 +181,16 @@ def train_model(model, train_loader, valid_loader, test_loader, learning_rate, E
 #%%
 
 #Part 1 - Quantization to half and integer precision
+model = import_transfer_learning_model(path=path_model)
+#%%
+if optimizer_name == 'SGD':
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+else:
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+criterion = nn.CrossEntropyLoss()
+
+train_model(model, trainloader, validloader, testloader, n_epochs, half = True)
 
 
 

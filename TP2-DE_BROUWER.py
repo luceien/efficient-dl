@@ -2,9 +2,9 @@
 model_name = 'DenseNet121'
 optimizer_name = 'Adam'
 learning_rate = 0.001
-optimizer_name = "SGD"
+optimizer_name = "Adam"
 batch_size = 32
-n_epochs = 20
+n_epochs = 1
 
 
 
@@ -43,26 +43,19 @@ testloader = DataLoader(minicifar_test, batch_size=batch_size, shuffle=True)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = DenseNet121()
 #model.eval()
 
 
 
-if optimizer_name == 'SGD':
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-else:
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-criterion = nn.CrossEntropyLoss()
 
 
 #%%
 
-def import_transfer_learning_model(model, path = 'Models/DenseNet121_Adam_epochs_50.pth'):
+def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_30.pth'):
     
     #Load of weights
-    dict = torch.load(path)
-    model.load_state_dict(dict['net'])
+    model = torch.load(path, map_location=device)
 
     n_inputs, n_classes = 1024, 4
     #Freeze weights
@@ -83,6 +76,7 @@ def import_transfer_learning_model(model, path = 'Models/DenseNet121_Adam_epochs
         p.numel() for p in model.parameters() if p.requires_grad)
 
     print(f'{total_trainable_params:,} training parameters.')
+    return model
 
 
 def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, half = False, patience=30):
@@ -186,7 +180,15 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, half = F
 #%%
 
 #Part 1 - Quantization to half and integer precision
-import_transfer_learning_model(model)
+model = import_transfer_learning_model()
+
+if optimizer_name == 'SGD':
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+else:
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+criterion = nn.CrossEntropyLoss()
+
 train_model(model, trainloader, validloader, testloader, n_epochs, half = True)
 
 

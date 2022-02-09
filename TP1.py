@@ -1,19 +1,23 @@
 #%%
 #Name of Model, optimizer etc.. for Graph file's name
-model_name = 'DenseNet121_PT'
+model_name = 'DenseNet121'
 optimizer_name = 'Adam'
-
+import numpy as np
 import torch
+from torchinfo import summary 
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
+from torch.optim.lr_scheduler import StepLR
+
 from sklearn.metrics import accuracy_score
-#from models_cifar_10.densenet import DenseNet121
-from models_cifar100.densenet import DenseNet121
+from models_cifar_10.densenet import DenseNet121
+#from models_cifar100.densenet import DenseNet121
 
 #Model chosen from Vgg, Densenet, Resnet
 model = DenseNet121()
+#print(summary(model))
 print(f"Nombre de paramètres: {sum(p.numel() for p in model.parameters())}")
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -24,6 +28,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
+  save_value = 0
   early_stop = [1000,0]
 
   #Optimizer (Adam better)
@@ -58,7 +63,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
         nb_batch = i     
 
     loss_list_train.append(loss_train/i)
-    print("\n","loss par epoch train =",loss_train/(nb_batch+1))
+    print("\n","loss par epoch train =",np.round(loss_train/(nb_batch+1),4))
 
     #Validation 
     loss_valid = 0
@@ -76,7 +81,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
         #print("\n","loss par Batch valid=",loss.item(),"\n")       
     
     loss_list_valid.append(loss_valid/i)
-    print("\n","loss par epoch valid =",loss_valid/(nb_batch+1))
+    print("\n","loss par epoch valid =",np.round(loss_valid/(nb_batch+1),4))
 
     #Early-Stopping
     if loss_valid/(nb_batch+1) < early_stop[0]:
@@ -101,16 +106,19 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             accuracy = 100 * correct / total
-    print('Accuracy of the network on test images: %d %%' % (
-        100 * correct / total))
+    print(f'Accuracy of the network on test images: {100 * np.round(correct / total,4)}%')
     accuracy_list.append(accuracy)
 
+    if save_value < accuracy:
+        torch.save(model, f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+        print("Weights saved! ")
+        save_value = accuracy
     #End training if early stop reach the patience
     if early_stop[1] == patience:
         break 
 
-    
-  return model, loss_list_train,loss_list_valid, accuracy_list 
+#from scikit-learn import classification_report    
+  return model, loss_list_train,loss_list_valid, accuracy_list, save_value
 #%%
 #Transfer Learning
 
@@ -147,17 +155,24 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
     dict = torch.load('models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth')
     model.load_state_dict(dict['net'])
 
-    n_inputs, n_classes = 1024, 4
+    
     #Freeze weights
     for param in model.parameters():
         param.requires_grad = False
-    #Replaicng the last layer with a NN
+
+    #Replacing the last layer with a NN
+    n_inputs, n_classes = 1024, 4
     model.linear = nn.Sequential(
                         nn.Linear(n_inputs, 256), 
                         nn.ReLU(), 
                         nn.Dropout(0.4),
-                        nn.Linear(256, n_classes),                   
+                        nn.Linear(256, 32), 
+                        nn.ReLU(), 
+                        nn.Dropout(0.4),
+                        nn.Linear(32, n_classes),                   
                         nn.LogSoftmax(dim=1))
+
+    print(summary(model))
 
     # Find total parameters and trainable parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -168,8 +183,11 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
     
     #NN parameters 
     model = model.to(device)
+    
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(),lr=learning_rate)
+    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    #scheduler = StepLR(optimizer, step_size=70, gamma=0.1)
 
     loss_list_train = []
     loss_list_valid = []
@@ -199,7 +217,7 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
             nb_batch = i     
 
         loss_list_train.append(loss_train/i)
-        print("\n","loss par epoch train =",loss_train/(nb_batch+1))
+        print("\n","loss par epoch train =",np.round(loss_train/(nb_batch+1),4))
 
         #Validation 
         loss_valid = 0
@@ -217,7 +235,7 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
             #print("\n","loss par Batch valid=",loss.item(),"\n")       
         
         loss_list_valid.append(loss_valid/i)
-        print("\n","loss par epoch valid =",loss_valid/(nb_batch+1))
+        print("\n","loss par epoch valid =",np.round(loss_valid/(nb_batch+1)))
         #Early-Stopping
         if loss_valid/(nb_batch+1) < early_stop[0]:
             early_stop[0] = loss_valid/(nb_batch+1)
@@ -225,7 +243,7 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
 
         else:
             early_stop[1] += 1
-
+        #scheduler.step()
         print(f'Validation loss did not change for {early_stop[1]} epochs')
 
         #Test
@@ -241,8 +259,7 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 accuracy = 100 * correct / total
-        print('Accuracy of the network on test images: %d %%' % (
-            100 * correct / total))
+        print(f'Accuracy of the network on test images: {100 * np.round(correct / total,4)}%')
         accuracy_list.append(accuracy)
 
         #End training if early stop reach the patience
@@ -254,7 +271,7 @@ def transfer_learning(model, train_loader,valid_loader,test_loader,learning_rate
 
 #%%
 #HyperParameters
-Niter,Bsize,lr = 500 , 32, 0.0001
+Niter,Bsize,lr = 50 , 32, 0.001
 
 #Data import
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
@@ -264,7 +281,9 @@ trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
-train_model, loss_list_train,loss_list_valid, accuracy = transfer_learning(model, trainloader,validloader,testloader,lr,Niter)
+train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
+print(f'The best accuracy for the saved model is: {best_accuracy}%')
+#train_model, loss_list_train,loss_list_valid, accuracy = transfer_learning(model, trainloader,validloader,testloader,lr,Niter)
 # %%
 
 #Register plot of Accuracy and loss

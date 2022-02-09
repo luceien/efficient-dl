@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from models_cifar_10.densenet import DenseNet121
-
+model = DenseNet121()
 #from TP1 import train_model
 def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30):
   loss_list_train = []
@@ -43,6 +43,8 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
         
         #Forward + backward + optimize
         outputs = model(inputs)
+        print(outputs)
+        print('Type',outputs.dtype,labels.dtype)
         loss = criterion(outputs,labels)
         #Calculate gradients
         loss.backward()
@@ -59,10 +61,11 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     model.eval()
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
-        inputs = inputs.half()
+        inputs= inputs.half()
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
         target = model(inputs)
+        target = target.half()
         # Find the Loss
         loss = criterion(target,labels)
         # Calculate Loss
@@ -89,7 +92,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     with torch.no_grad():  # torch.no_grad for TESTING
         for data in tqdm(test_loader):
             images, labels = data
-            inputs, labels = inputs.half()
+            images = inputs.half()
             if torch.cuda.is_available():
                 images, labels = images.to(device), labels.to(device)
             outputs = model(images)
@@ -111,7 +114,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 #from scikit-learn import classification_report    
   return model, loss_list_train,loss_list_valid, accuracy_list, save_value
 
-model = torch.load("Models/DenseNet121_Adam_epochs_30.pth")
+model.load_state_dict("Models/DenseNet121_Adam_epochs_30.pth")
 model.half()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

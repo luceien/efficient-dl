@@ -5,6 +5,7 @@ learning_rate = 0.001
 optimizer_name = "Adam"
 batch_size = 32
 n_epochs = 1
+path_model = 'Models/DenseNet121_Adam_epochs_50.pth'
 
 
 
@@ -52,7 +53,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 #%%
 
-def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_30.pth'):
+def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_50.pth'):
     
     #Load of weights
     model = torch.load(path, map_location=device)
@@ -180,8 +181,8 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, half = F
 #%%
 
 #Part 1 - Quantization to half and integer precision
-model = import_transfer_learning_model()
-
+model = import_transfer_learning_model(path=path_model)
+#%%
 if optimizer_name == 'SGD':
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 else:

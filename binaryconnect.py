@@ -4,6 +4,7 @@
 
 #  
 import torch.nn as nn
+import torch
 import numpy
 
 
@@ -19,7 +20,6 @@ class BC():
         for m in model.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 count_targets = count_targets + 1
-
         start_range = 0
         end_range = count_targets-1
         self.bin_range = numpy.linspace(start_range,
@@ -37,14 +37,14 @@ class BC():
 
         ### This builds the initial copy of all parameters and target modules
         index = -1
-        for m in model.modules():
+        
+        for m in model.modules(): # m is a layer
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 index = index + 1
                 if index in self.bin_range:
-                    tmp = m.weight.data.clone()
-                    self.saved_params.append(tmp)
+                    tmp = m.weight.data.clone() #Clone weight of the layer
+                    self.saved_params.append(tmp) #Clone the value of the weight in the given layer
                     self.target_modules.append(m.weight)
-
 
     def save_params(self):
 
@@ -56,13 +56,17 @@ class BC():
     def binarization(self):
 
         ### To be completed
-
+        #In order to copy these values into another place (e.g. to store the full precision version of the weights), 
+        # use the clone function followed by a copy_ 
+        
         ### (1) Save the current full precision parameters using the save_params method
-
+        self.save_params()
         
-        1
+        
         ### (2) Binarize the weights in the model, by iterating through the list of target modules and overwrite the values with their binary version
-        
+        for index in range(self.num_of_params):
+            self.target_modules[index] = torch.sign(self.target_modules[index])#data?
+            
     def restore(self):
 
         ### restore the copy from self.saved_params into the model 
@@ -76,9 +80,11 @@ class BC():
         ## Clip all parameters to the range [-1,1] using Hard Tanh 
         ## you can use the nn.Hardtanh function
 
-        1
-
-
+        htanh = torch.nn.Hardtanh()
+        for parameter in self.model.parameters():
+            parameter= htanh(parameter)
+        #It works but I did not manage to change self.models.parameters after applying htanh
+        #to parameter
     def forward(self,x):
 
         ### This function is used so that the model can be used while training

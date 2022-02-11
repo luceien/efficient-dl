@@ -9,15 +9,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from models_cifar_10.densenet import DenseNet121
-model = DenseNet121()
-#from TP1 import train_model
-def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30):
+
+def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30,binary=True):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
   save_value = 0
   early_stop = [1000,0]
+
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  model.to(device)
 
   #Optimizer (Adam better)
   if optimizer_name == 'SGD':
@@ -27,7 +28,6 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
   #Loss
   criterion = nn.CrossEntropyLoss()
-
   for epoch in range(EPOCHS):
     print(f"Epoch n° : {epoch}/{EPOCHS} commencée")
     loss_train = 0
@@ -35,21 +35,33 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     #Training
     for i, data in tqdm(enumerate(train_loader, 0)):  
         inputs, labels = data
-        inputs = inputs.half()
+        
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
         #Clear the gradients
         optimizer.zero_grad()
-        
+
+        #Apply binarization
+        if binary:
+            model = BC(model)
+            model.binarization()
+
         #Forward + backward + optimize
         outputs = model(inputs)
-        print(outputs)
-        print('Type',outputs.dtype,labels.dtype)
+        
         loss = criterion(outputs,labels)
         #Calculate gradients
         loss.backward()
+        
+        #Restore before weights' update
+        if binary:
+            model.restore()
+
         #Update weights
         optimizer.step()
+
+        if binary:
+            model.clip()
         loss_train += loss.item()
         nb_batch = i     
 
@@ -59,13 +71,13 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     #Validation 
     loss_valid = 0
     model.eval()
+
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
-        inputs= inputs.half()
+        
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
         target = model(inputs)
-        target = target.half()
         # Find the Loss
         loss = criterion(target,labels)
         # Calculate Loss
@@ -92,7 +104,6 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     with torch.no_grad():  # torch.no_grad for TESTING
         for data in tqdm(test_loader):
             images, labels = data
-            images = inputs.half()
             if torch.cuda.is_available():
                 images, labels = images.to(device), labels.to(device)
             outputs = model(images)
@@ -114,21 +125,66 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 #from scikit-learn import classification_report    
   return model, loss_list_train,loss_list_valid, accuracy_list, save_value
 
-model.load_state_dict("Models/DenseNet121_Adam_epochs_30.pth")
-model.half()
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+def half_model(model,test_loader,half=True):
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
 
-model.to(device)
+    
+    if half:
+        model.half()
+    model.eval()
+    
+    # Find total parameters and trainable parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f'{total_params:,} total parameters.')
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    correct = 0
+    total = 0
+    with torch.no_grad():  # torch.no_grad for TESTING
+        for data in tqdm(test_loader):
+            images, labels = data
+            if torch.cuda.is_available():
+                images, labels = images.to(device), labels.to(device)
+            if half:
+                images = images.half()
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            accuracy = 100 * correct / total
+    print(f'Accuracy of the network on test images: {accuracy}%')
+    return accuracy
+
+
+from models_cifar_10.densenet import DenseNet121
+model = DenseNet121()
+weights = torch.load("Models/DenseNet121_Adam_epochs_25.pth")
+model.load_state_dict(weights['net'])
+
+from binaryconnect import *
+
+test = BC(model)
+#test.binarization()
+test.clip()
+
+'''accuracy_before_half = weights['accuracy']
+print(f'Accuracy of the saved model : {accuracy_before_half}%')
+
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 
-Niter,Bsize,lr = 10, 32, 0.001
-print(Niter)
-torch.save(model,f'Models/HALF_{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+Niter,Bsize,lr = 25, 32, 0.001
+#torch.save(model,f'Models/HALF_{model_name}_{optimizer_name}_epochs_{Niter}.pth')
 
 trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
-
-train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
+accuracy = half_model(model,testloader)
+print(f'The accuracy of the half model is: {accuracy}%\n\
+ The old one was : {accuracy_before_half}%')
+'''

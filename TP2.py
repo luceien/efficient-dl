@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 
-def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30,binary=True):
+def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
@@ -43,25 +43,26 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
         #Apply binarization
         if binary:
-            model = BC(model)
-            model.binarization()
+            model_bc = BC(model)
+            model_bc.binarization()
 
-        #Forward + backward + optimize
-        outputs = model(inputs)
-        
+            #Forward + backward + optimize
+            outputs = model_bc.forward(inputs)
+        else:
+             outputs = model_bc(inputs)
         loss = criterion(outputs,labels)
         #Calculate gradients
         loss.backward()
         
         #Restore before weights' update
         if binary:
-            model.restore()
+            model_bc.restore()
 
         #Update weights
         optimizer.step()
 
         if binary:
-            model.clip()
+            model_bc.clip()
         loss_train += loss.item()
         nb_batch = i     
 
@@ -162,17 +163,13 @@ def half_model(model,test_loader,half=True):
 
 from models_cifar_10.densenet import DenseNet121
 model = DenseNet121()
-weights = torch.load("Models/DenseNet121_Adam_epochs_25.pth")
-model.load_state_dict(weights['net'])
+#weights = torch.load("Models/DenseNet121_Adam_epochs_25.pth")
+#model.load_state_dict(weights['net'])
 
 from binaryconnect import *
 
-test = BC(model)
-#test.binarization()
-test.clip()
-
-'''accuracy_before_half = weights['accuracy']
-print(f'Accuracy of the saved model : {accuracy_before_half}%')
+#accuracy_before_half = weights['accuracy']
+#print(f'Accuracy of the saved model : {accuracy_before_half}%')
 
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
@@ -184,7 +181,29 @@ trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
-accuracy = half_model(model,testloader)
+model,loss_list_train,loss_list_valid,accuracy_list,best_accuracy= train_model(model,trainloader,validloader,testloader,learning_rate=lr,EPOCHS=Niter)
+
+import matplotlib.pyplot as plt
+#import torchvision
+import numpy as np
+epochs = [k+1 for k in range(len(loss_list_train))]
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
+axes[0].plot(epochs,loss_list_train,color='b',label='Training loss')
+axes[0].plot(epochs,loss_list_valid, color='r',label='Validation loss')
+axes[0].set_xlabel('Epochs', fontsize=14)
+axes[0].set_ylabel('Loss', fontsize=14)
+axes[0].set_title(f'{model_name} with {Niter} epochs')
+axes[0].legend(loc='upper right')
+
+axes[1].plot(epochs,accuracy_list,color='b',label='Accuracy')
+axes[1].scatter(accuracy_list.index(best_accuracy),best_accuracy,c='r',label=f'Best accuracy : {best_accuracy}%')
+axes[1].set_xlabel('Epochs', fontsize=14)
+axes[1].set_ylabel('Accuracy in %', fontsize=14)
+axes[1].legend(loc='upper right')
+
+# Save figure
+fig.savefig(f'Images/Binary/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+
+'''accuracy = half_model(model,testloader)
 print(f'The accuracy of the half model is: {accuracy}%\n\
- The old one was : {accuracy_before_half}%')
-'''
+ The old one was : {accuracy_before_half}%')'''

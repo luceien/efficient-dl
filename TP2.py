@@ -28,6 +28,8 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
   #Loss
   criterion = nn.CrossEntropyLoss()
+  if binary:
+    model_bc = BC(model)
   for epoch in range(EPOCHS):
     print(f"Epoch n° : {epoch}/{EPOCHS} commencée")
     loss_train = 0
@@ -43,13 +45,12 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
         #Apply binarization
         if binary:
-            model_bc = BC(model)
             model_bc.binarization()
 
             #Forward + backward + optimize
             outputs = model_bc.forward(inputs)
         else:
-             outputs = model_bc(inputs)
+            outputs = model(inputs)
         loss = criterion(outputs,labels)
         #Calculate gradients
         loss.backward()
@@ -71,14 +72,18 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
     #Validation 
     loss_valid = 0
-    model.eval()
+    if not binary:
+        model.eval()
 
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
         
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
-        target = model(inputs)
+        if binary:
+            target = model_bc.forward(inputs)
+        else:
+            target = model(inputs)
         # Find the Loss
         loss = criterion(target,labels)
         # Calculate Loss
@@ -107,7 +112,11 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
             images, labels = data
             if torch.cuda.is_available():
                 images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
+            if binary:
+                outputs = model_bc.forward(images)
+            else:
+                outputs = model(images)
+
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -116,15 +125,19 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     accuracy_list.append(accuracy)
 
     if save_value < accuracy:
-        torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
-        print("Weights saved! ")
+        if not binary:
+            torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+            print("Weights saved! ")
         save_value = accuracy
     #End training if early stop reach the patience
     if early_stop[1] == patience:
         break 
 
-#from scikit-learn import classification_report    
-  return model, loss_list_train,loss_list_valid, accuracy_list, save_value
+#from scikit-learn import classification_report 
+  if binary:   
+    return model_bc, loss_list_train,loss_list_valid, accuracy_list, save_value
+  else:
+    return model_bc, loss_list_train,loss_list_valid, accuracy_list, save_value
 
 def half_model(model,test_loader,half=True):
     

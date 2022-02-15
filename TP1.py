@@ -110,7 +110,11 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     accuracy_list.append(accuracy)
 
     if save_value < accuracy:
-        torch.save(model, f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+        state = {
+            'net': model.state_dict(),
+            'accuracy': accuracy
+        }
+        torch.save(state, f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
         print("Weights saved! ")
         save_value = accuracy
     #End training if early stop reach the patience

@@ -8,9 +8,8 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
-
-
-def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
+import timeit
+def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,earlystop=True,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
@@ -102,7 +101,7 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
     else:
         early_stop[1] += 1
 
-    print(f'Validation loss did not change for {early_stop[1]} epochs')
+    print(f'Validation loss did not improve for {early_stop[1]} epochs')
 
     #Test
     correct = 0
@@ -130,14 +129,15 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
             print("Weights saved! ")
         save_value = accuracy
     #End training if early stop reach the patience
-    if early_stop[1] == patience:
-        break 
+    if earlystop :
+        if early_stop[1] == patience:
+            break 
 
 #from scikit-learn import classification_report 
   if binary:   
     return model_bc, loss_list_train,loss_list_valid, accuracy_list, save_value
   else:
-    return model_bc, loss_list_train,loss_list_valid, accuracy_list, save_value
+    return model, loss_list_train,loss_list_valid, accuracy_list, save_value
 
 def half_model(model,test_loader,half=True):
     
@@ -187,14 +187,37 @@ from binaryconnect import *
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 
-Niter,Bsize,lr = 25, 32, 0.001
+Niter,Bsize,lr = 200, 32, 0.001
 #torch.save(model,f'Models/HALF_{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+
+
+#Apply binarization of weight during training
+binary_flag = False
+earlystop_flag = False
 
 trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
-model,loss_list_train,loss_list_valid,accuracy_list,best_accuracy= train_model(model,trainloader,validloader,testloader,learning_rate=lr,EPOCHS=Niter)
+#Time
+start = timeit.default_timer()
+#Training function
+model,loss_list_train,loss_list_valid,\
+accuracy_list,best_accuracy= train_model(model,
+                                        trainloader,
+                                        validloader,
+                                        testloader,
+                                        learning_rate=lr,
+                                        EPOCHS=Niter,
+                                        earlystop=earlystop_flag,
+                                        patience=30,
+                                        binary=binary_flag)
+
+#Time
+stop = timeit.default_timer()
+execution_time = stop - start
+
+print(f"Program Executed in {execution_time}")
 
 import matplotlib.pyplot as plt
 #import torchvision
@@ -209,13 +232,13 @@ axes[0].set_title(f'{model_name} with {Niter} epochs')
 axes[0].legend(loc='upper right')
 
 axes[1].plot(epochs,accuracy_list,color='b',label='Accuracy')
-axes[1].scatter(accuracy_list.index(best_accuracy),best_accuracy,c='r',label=f'Best accuracy : {best_accuracy}%')
+axes[1].scatter(accuracy_list.index(best_accuracy)+1,best_accuracy,c='r',label=f'Best accuracy : {best_accuracy}%')
 axes[1].set_xlabel('Epochs', fontsize=14)
 axes[1].set_ylabel('Accuracy in %', fontsize=14)
-axes[1].legend(loc='upper right')
+axes[1].legend(loc='upper left')
 
 # Save figure
-fig.savefig(f'Images/Binary/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+fig.savefig(f'Images/Binary/Loss_binary_{binary_flag}_{optimizer_name}_time{int(execution_time)}s_epochs_{Niter}_lr_{lr}.png')
 
 '''accuracy = half_model(model,testloader)
 print(f'The accuracy of the half model is: {accuracy}%\n\

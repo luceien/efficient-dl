@@ -82,7 +82,7 @@ class BC():
 
         htanh = torch.nn.Hardtanh()
         for index in range(self.num_of_params):
-            self.target_modules[index].data.copy_(htanh(self.target_modules[index].data))
+            self.saved_params[index].data.copy_(htanh(self.saved_params[index].data))
     def forward(self,x):
 
         ### This function is used so that the model can be used while training

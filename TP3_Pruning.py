@@ -200,7 +200,7 @@ def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,N
     pruned_model = deepcopy(model)
     list_accuracy = []
     amounts = np.linspace(0,1,Niter)
-    for amount in amounts:
+    for amount in amounts[:-1]:
         print(f'Training n°{amounts.index(amount)+1}/{len(amounts)}')
         pruned_model = global_pruning(pruned_model,amount)
         _,_,_,_,_,accuracy,_=train_model(pruned_model, train_loader,valid_loader,test_loader,learning_rate, EPOCHS)

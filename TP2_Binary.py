@@ -9,6 +9,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 import timeit
+import matplotlib.pyplot as plt
+#import torchvision
+import numpy as np
+
 def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,earlystop=True,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
   loss_list_train = []
   loss_list_valid = []
@@ -144,53 +148,52 @@ def half_model(model,test_loader,half=True):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    
     if half:
-        model.half()
+       model =  model.half()
     model.eval()
     
     # Find total parameters and trainable parameters
     total_params = sum(p.numel() for p in model.parameters())
     print(f'{total_params:,} total parameters.')
 
-    for param in model.parameters():
-        param.requires_grad = False
+    '''for param in model.parameters():
+        param.requires_grad = False'''
 
     correct = 0
     total = 0
-    with torch.no_grad():  # torch.no_grad for TESTING
-        for data in tqdm(test_loader):
-            images, labels = data
-            if torch.cuda.is_available():
-                images, labels = images.to(device), labels.to(device)
-            if half:
-                images = images.half()
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            accuracy = 100 * correct / total
-    print(f'Accuracy of the network on test images: {accuracy}%')
+    #with torch.no_grad():  # torch.no_grad for TESTING
+    for data in tqdm(test_loader):
+        images, labels = data
+        if torch.cuda.is_available():
+            images, labels = images.to(device), labels.to(device)
+        if half:
+            images = images.half()
+        outputs = model(images)
+        
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+        accuracy = 100 * correct / total
+    print(f'Accuracy of the network on test images: {100 * np.round(correct/total,4)}%')
     return accuracy
 
 
 from models_cifar_10.densenet import DenseNet121
+from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
+from torch.utils.data.dataloader import DataLoader
+from binaryconnect import *
+
 model = DenseNet121()
 #weights = torch.load("Models/DenseNet121_Adam_epochs_25.pth")
 #model.load_state_dict(weights['net'])
 
-from binaryconnect import *
 
 #accuracy_before_half = weights['accuracy']
 #print(f'Accuracy of the saved model : {accuracy_before_half}%')
 
-from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
-from torch.utils.data.dataloader import DataLoader
-
+############### PARAMETERS ##################
 Niter,Bsize,lr = 200, 32, 0.001
 #torch.save(model,f'Models/HALF_{model_name}_{optimizer_name}_epochs_{Niter}.pth')
-
-
 #Apply binarization of weight during training
 binary_flag = False
 earlystop_flag = False
@@ -200,6 +203,29 @@ validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
 #Time
+start = timeit.default_timer()
+#Running test on original model
+accuracy_before_half = half_model(model,testloader,half=False)
+
+stop = timeit.default_timer()
+execution_time = stop - start
+print(f"Program Executed in {int(execution_time//60)}min{np.round(execution_time%60,2)}s")
+
+#Time
+start = timeit.default_timer()
+#Running half on original model
+
+accuracy = half_model(model,testloader,half=True)
+
+stop = timeit.default_timer()
+execution_time = stop - start
+print(f"Program Executed in {int(execution_time//60)}min{np.round(execution_time%60,2)}s")
+
+#Final score
+print(f'The accuracy of the half model is: {accuracy}%\n\
+ The old one was : {accuracy_before_half}%')
+
+'''#Time
 start = timeit.default_timer()
 #Training function
 model,loss_list_train,loss_list_valid,\
@@ -217,11 +243,9 @@ accuracy_list,best_accuracy= train_model(model,
 stop = timeit.default_timer()
 execution_time = stop - start
 
+
 print(f"Program Executed in {execution_time}")
 
-import matplotlib.pyplot as plt
-#import torchvision
-import numpy as np
 epochs = [k+1 for k in range(len(loss_list_train))]
 fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
 axes[0].plot(epochs,loss_list_train,color='b',label='Training loss')
@@ -240,6 +264,5 @@ axes[1].legend(loc='upper left')
 # Save figure
 fig.savefig(f'Images/Binary/Loss_binary_{binary_flag}_{optimizer_name}_time{int(execution_time)}s_epochs_{Niter}_lr_{lr}.png')
 
-'''accuracy = half_model(model,testloader)
-print(f'The accuracy of the half model is: {accuracy}%\n\
- The old one was : {accuracy_before_half}%')'''
+
+'''

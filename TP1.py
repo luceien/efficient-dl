@@ -285,11 +285,12 @@ trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
+best_accuracy = pretrained_model(test_loader=testloader)
 train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
 print(f'The best accuracy for the saved model is: {best_accuracy}%')
 #train_model, loss_list_train,loss_list_valid, accuracy = transfer_learning(model, trainloader,validloader,testloader,lr,Niter)
 # %%
-
+'''
 #Register plot of Accuracy and loss
 import matplotlib.pyplot as plt
 #import torchvision
@@ -310,4 +311,4 @@ axes[1].set_ylabel('Accuracy in %', fontsize=14)
 axes[1].legend(loc='upper right')
 
 # Save figure
-fig.savefig(f'Images/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+fig.savefig(f'Images/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')'''

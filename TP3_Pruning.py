@@ -31,7 +31,8 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
   if optimizer_name == 'SGD':
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
   else:
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate,eps=1e-08, weight_decay=0)
+    
 
   #Loss
   criterion = nn.CrossEntropyLoss()
@@ -180,11 +181,12 @@ def local_pruning(model):
             prune.l1_unstructured(module, name='weight', amount=0.4)
     return model
 
-def global_pruning(model,amount):
+def global_pruning(model,amount,conv2d_flag,linear_flag,BN_flag):
     parameters_to_prune = []
 
     for m in model.modules():
-        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or isinstance(m,nn.BatchNorm2d):
+        if (isinstance(m, nn.Conv2d) and conv2d_flag) or (isinstance(m, nn.Linear) and linear_flag) or (isinstance(m,nn.BatchNorm2d) and BN_flag):
+        #if isinstance(m, nn.Conv2d):# or isinstance(m, nn.Linear) or isinstance(m,nn.BatchNorm2d):
             parameters_to_prune.append((m,'weight'))
 
     prune.global_unstructured(parameters_to_prune,
@@ -246,13 +248,15 @@ if __name__=='__main__':
     #print(summary(model, input_size=(32, 3, 32, 32)))
 
     ############################################# PARAMETERS ################################################
-    EPOCHS,Bsize,lr = 40, 32, 0.001
+    EPOCHS,Bsize,lr = 1, 32, 0.001
     #Apply binarization of weight/early stopping during training
     binary_flag, earlystop_flag = False, False
+    #Flag for layers pruned
+    conv2d_flag,linear_flag,BN_flag = True,True,True
     #Number of different pruning steps
     Niter = 11 #21
     #% of pruning apply to the model
-    amount = 0.6
+    amount = 0.4
 
     ################################################ DATA #####################################################
     #Loading data of minicifar
@@ -265,7 +269,7 @@ if __name__=='__main__':
     #pruning_accuracy(model,trainloader,validloader,testloader,lr,Niter=Niter,EPOCHS=EPOCHS)
 
     #Prune the model and print details of layers pruning
-    pruned_model = global_pruning(model,amount)
+    pruned_model = global_pruning(model,amount,conv2d_flag,linear_flag,BN_flag)
     print_prune_details(model)
 
     #Train the original model
@@ -275,7 +279,7 @@ if __name__=='__main__':
                                                     validloader,
                                                     testloader,
                                                     learning_rate=lr,
-                                                    EPOCHS=Niter,
+                                                    EPOCHS=EPOCHS,
                                                     earlystop=earlystop_flag,
                                                     patience=30,
                                                     binary=binary_flag)
@@ -286,7 +290,7 @@ if __name__=='__main__':
                                                     validloader,
                                                     testloader,
                                                     learning_rate=lr,
-                                                    EPOCHS=Niter,
+                                                    EPOCHS=EPOCHS,
                                                     earlystop=earlystop_flag,
                                                     patience=30,
                                                     binary=binary_flag)
@@ -313,8 +317,8 @@ if __name__=='__main__':
     #Second figure for accuracy of pruned/original model on test set
     axes[1].plot(epochs,pruned_accuracy,color='b',label='Accuracy pruned on validation')
     axes[1].plot(epochs,origin_accuracy,color='darkgreen',label='Accuracy origin on validation')
-    axes[1].scatter(pruned_accuracy.index(best_accuracy1)+1,best_accuracy1,c='r',label=f'Best accuracy : {best_accuracy1}% pruned')
-    axes[1].scatter(origin_accuracy.index(best_accuracy2)+1,best_accuracy2,c='chocolate',label=f'Best accuracy: {best_accuracy2}% original')
+    axes[1].scatter(origin_accuracy.index(best_accuracy1)+1,best_accuracy1,c='chocolate',label=f'Best accuracy: {best_accuracy1}% original')
+    axes[1].scatter(pruned_accuracy.index(best_accuracy2)+1,best_accuracy2,c='r',label=f'Best accuracy : {best_accuracy2}% pruned')
     axes[1].plot([], [], ' ', label=f"Accuracy on test after pruned training:{test1}%")
     axes[1].plot([], [], ' ', label=f"Accuracy on test after original training:{test2}%")
     axes[1].set_xlabel('Epochs', fontsize=14)
@@ -322,5 +326,6 @@ if __name__=='__main__':
     axes[1].legend(loc='upper left')
 
     # Save figure
-    fig.savefig(f'Images/Pruning/Loss_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+    os.makedirs('Images/Pruning/Loss',exist_ok=True)
+    fig.savefig(f'Images/Pruning/Loss/Loss_{optimizer_name}_epochs_{EPOCHS}_lr_{lr}.png')
     ###############################################################################################################

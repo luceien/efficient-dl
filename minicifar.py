@@ -74,7 +74,8 @@ c10test_imagenet = CIFAR10(rootdir,train=False,download=True,transform=transform
 def train_validation_split(train_size, num_train_examples):
     # obtain training indices that will be used for validation
     indices = list(range(num_train_examples))
-    np.random.shuffle(indices)
+    #np.random.shuffle(indices)
+    np.random.RandomState(seed=69).shuffle(indices)
     idx_split = int(np.floor(train_size * num_train_examples))
     train_index, valid_index = indices[:idx_split], indices[idx_split:]
 

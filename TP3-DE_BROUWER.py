@@ -2,37 +2,29 @@
 model_name = 'DenseNet121'
 optimizer_name = 'Adam'
 learning_rate = 0.001
-optimizer_name = "Adam"
 batch_size = 32
-n_epochs = 10
-path_model = 'Models/DenseNet121_Adam_epochs_50.pth'
-class_names = ['plane', 'car', 'bird', 'cat']
+n_epochs = 100
+path_model ='models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth'
 
-MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
-STD = torch.tensor([0.2023, 0.1994, 0.2010])
+cifar = 10
+
+if cifar ==10:
+    class_names = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+else :
+    class_names = ['plane', 'car', 'bird', 'cat']
+
 
 #%%
-from xml.dom import ValidationErr
-from sklearn.metrics import accuracy_score
-from models_cifar_10.densenet import DenseNet121
+from models_cifar_10.densenet import DenseNet121,DenseNet121bis
 
-from scipy.__config__ import get_info
-from torchvision.datasets import CIFAR10
 import numpy as np 
-from torch.utils.data import Subset
-from torch.utils.data.sampler import SubsetRandomSampler
-import torchvision.models
 #from torchinfo import summary
-
-import torchvision.transforms as transforms
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 
-import matplotlib.pyplot as plt
 import torch.optim as optim
-
 import torch.nn as nn
-import torch.nn.functional as F
+#import torch.nn.functional as F
 import torch
 from tqdm import tqdm
 import torch.nn.utils.prune as prune
@@ -41,9 +33,12 @@ from copy import deepcopy
 
 from sklearn.metrics import confusion_matrix
 import itertools
+import matplotlib.pyplot as plt
 
 
 
+MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
+STD = torch.tensor([0.2023, 0.1994, 0.2010])
 start = time.time()
 
 trainloader = DataLoader(minicifar_train, batch_size=batch_size, sampler=train_sampler)
@@ -52,20 +47,21 @@ testloader = DataLoader(minicifar_test, batch_size=batch_size, shuffle=True)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#model.eval()
-
+print(f'Device used is {device}\n')
 
 
 
 #%%
 
-def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_50.pth', freeze=False):
+def import_transfer_learning_model(model, n_cifar, path = 'Models/DenseNet121_Adam_epochs_50.pth', freeze=False):
     
-    #Load of weights
-    model = torch.load(path, map_location=device)
+    #Load of weight
+    state_dict = torch.load(path,  map_location=device)
+    #print(state_dict.keys())
+    model.load_state_dict(state_dict['net'])
 
-    n_inputs, n_classes = 1024, 4
-    
+    n_inputs, n_classes = 1024, n_cifar
+
     if freeze :
         #Freeze weights
         for param in model.parameters():
@@ -73,10 +69,10 @@ def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_50.pth
 
     #Replacing the last layer with a NN
     model.linear = nn.Sequential(
-                        nn.Linear(n_inputs, 32), 
+                        nn.Linear(n_inputs, 8), 
                         nn.ReLU(), 
                         nn.Dropout(0.4),
-                        nn.Linear(32, n_classes),                   
+                        nn.Linear(8, n_classes),                   
                         nn.LogSoftmax(dim=1))
 
     # Find total parameters and trainable parameters
@@ -86,18 +82,25 @@ def import_transfer_learning_model(path = 'Models/DenseNet121_Adam_epochs_50.pth
         p.numel() for p in model.parameters() if p.requires_grad)
 
     print(f'{total_trainable_params:,} training parameters.')
+
     return model
 
 
-def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience=30):
+def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, verbose =2, patience=30):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
   save_value = 0
   early_stop = [1000,0]
 
+  if optimizer_name == 'SGD':
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+  else:
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
   for epoch in range(EPOCHS):
-    print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
+    if verbose > 1 :
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
     loss_train = 0
     
     #Training
@@ -120,7 +123,8 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience
         nb_batch = i     
 
     loss_list_train.append(loss_train/i)
-    print("\n","loss par epoch train =",loss_train/(nb_batch+1))
+    if verbose > 1 :
+        print("\n","loss par epoch train =",loss_train/(nb_batch+1))
 
     #Validation 
     loss_valid = 0
@@ -141,7 +145,8 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience
         #print("\n","loss par Batch valid=",loss.item(),"\n")       
     
     loss_list_valid.append(loss_valid/i)
-    print("\n","loss par epoch valid =",loss_valid/(nb_batch+1))
+    if verbose > 1 :
+        print("\n","loss par epoch valid =",loss_valid/(nb_batch+1))
 
     #Early-Stopping
     if loss_valid/(nb_batch+1) < early_stop[0]:
@@ -151,7 +156,8 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience
     else:
         early_stop[1] += 1
 
-    print(f'Validation loss did not change for {early_stop[1]} epochs')
+    if verbose > 1 :
+        print(f'Validation loss did not change for {early_stop[1]} epochs')
 
     #Test
     correct = 0
@@ -171,10 +177,12 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience
 
     if save_value < accuracy:
         torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{n_epochs}.pth')
-        print("Weights saved !")
+        if verbose > 1:
+            print("Weights saved !")
         save_value = accuracy
 
-    print('Accuracy of the network on test images: %d %%' % (100 * correct / total))
+    if verbose > 1:
+        print(f'Accuracy of the network on test images: {round(accuracy, 2)}%')
     accuracy_list.append(accuracy)
 
     #End training if early stop reach the patience
@@ -185,21 +193,11 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, patience
   return model, loss_list_train,loss_list_valid, accuracy_list, save_value 
 
 
-def pruning(model):
+#####################################################
+#VIZUALIZATION FUNCTIONS
 
-    for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Conv2d):
-            prune.l1_unstructured(module, name='weight', amount=0.2)
-            
-        elif isinstance(module, torch.nn.Linear):
-            prune.l1_unstructured(module, name='weight', amount=0.4)
-
-    prune.remove(module, 'weight')
-
-    return model
-    
-
-def plot(n_epochs, loss_list_train, loss_list_valid, save=False):
+#Function to plot validation and train loss + accuracy on test set
+def plot(n_epochs, loss_list_train, loss_list_valid, save=False, title = f'Images/Binary/Loss_binary_{optimizer_name}_epochs_{n_epochs}_lr_{learning_rate}.png'):
     
     epochs = [k+1 for k in range(len(loss_list_train))]
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -218,9 +216,9 @@ def plot(n_epochs, loss_list_train, loss_list_valid, save=False):
 
     # Save figure
     if save :
-        fig.savefig(f'Images/Binary/Loss_binary_{optimizer_name}_time{int(execution_time)}s_epochs_{n_epochs}_lr_{learning_rate}.png')
+        fig.savefig(title)
 
-
+#Function to plot confusion matrix
 def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
     # This function prints and plots the confusion matrix. Normalization can be applied by setting `normalize=True`
     if normalize:
@@ -247,7 +245,7 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     plt.ylabel('true label')
     plt.xlabel('predicted label')
 
-
+#Function to get evaluation of the model (accuracy per label + overall accuracy)
 def evaluation(model, test_loader, criterion):
 
   # initialize lists to monitor test loss and accuracy
@@ -280,9 +278,12 @@ def evaluation(model, test_loader, criterion):
           print('test accuracy of %1s: %2d%% (%2d/%2d)' % (class_names[i], 100 * class_correct[i] / class_total[i], np.sum(class_correct[i]), np.sum(class_total[i])))
     except:
         pass 
-  print('\ntest accuracy (overall): %2.2f%% (%2d/%2d)\n' % (100. * np.sum(class_correct) / np.sum(class_total), np.sum(class_correct), np.sum(class_total)))
+  accuracy_overall = 100. * np.sum(class_correct) / np.sum(class_total)
+  print('\ntest accuracy (overall): %2.2f%% (%2d/%2d)\n' % (accuracy_overall, np.sum(class_correct), np.sum(class_total)))
 
+  return accuracy_overall
 
+#[NOT WORKING] Function to get lists of labels + predicted labels + images
 def get_predictions(model, loader):
 
     preds = torch.tensor([], dtype=torch.long)
@@ -312,32 +313,151 @@ def get_predictions(model, loader):
 
 
 
+
+#####################################################
+#PRUNING FUNCTIONS
+
+#First function to prune locally
+def pruning(model):
+
+    new_model = deepcopy(model)
+
+    for name, module in new_model.named_modules():
+
+        if isinstance(module, torch.nn.BatchNorm2d):
+            prune.l1_unstructured(module, name='weight', amount=0.2)
+            prune.remove(module, "weight")
+
+        elif isinstance(module, torch.nn.Conv2d):
+            prune.l1_unstructured(module, name='weight', amount=0.4)
+            prune.remove(module, "weight")
+    
+
+        elif isinstance(module, torch.nn.Linear):
+            prune.l1_unstructured(module, name='weight', amount=0.3)
+            prune.remove(module, "weight")
+
+        #elif isinstance(module, Bottleneck):
+        #   for layer in module :
+        #        print(list(layer.named_parameters()))
+        #    break    
+
+    return new_model
+
+#Paul's function to prune locally
+def local_pruning(model, amount):
+    for name, module in model.named_modules():
+    # prune 20% of connections in all 2D-conv layers 
+        if isinstance(module, torch.nn.Conv2d):
+            prune.l1_unstructured(module, name='weight', amount=amount)
+        # prune 40% of connections in all linear layers 
+        elif isinstance(module, torch.nn.Linear):
+            prune.l1_unstructured(module, name='weight', amount=amount)
+    return model
+
+#Function to prune globally
+def global_pruning(model,amount,conv2d_flag=True,linear_flag=True,BN_flag=False):
+    parameters_to_prune = []
+
+    for m in model.modules():
+        if (isinstance(m, nn.Conv2d) and conv2d_flag) or (isinstance(m, nn.Linear) and linear_flag) or (isinstance(m,nn.BatchNorm2d) and BN_flag):
+        #if isinstance(m, nn.Conv2d):# or isinstance(m, nn.Linear) or isinstance(m,nn.BatchNorm2d):
+            parameters_to_prune.append((m,'weight'))
+
+    prune.global_unstructured(parameters_to_prune,
+                            pruning_method=prune.L1Unstructured,
+                            amount=amount,)
+    '''for name, w in parameters_to_prune:
+        prune.remove(name,'weight')'''
+
+    return model
+
+#[NOT WORKING] Function to plot accuracy of a model according to the percentage pruned
+def plot_accuracy_prune(nepochs=2, prune='global', freeze=True):
+
+    accu_list = []
+    prune_r = [0.01*i for i in range(100)]
+
+
+    for pc in tqdm(range(len(prune_r))):
+        model = DenseNet121()
+        model_n = import_transfer_learning_model(model, cifar, path = path_model, freeze=freeze)
+
+        print('Model has been correctly transfered')
+
+
+        if prune =='global':
+            model_n = global_pruning(model_n,prune_r[pc])
+        else:
+            model_n = local_pruning(model_n,prune_r[pc])
+        print('Pruning done !')
+
+        if torch.cuda.is_available() :
+            model_n = model_n.to(device)    
+
+
+        model_n, _, _, _, best_accuracy = train_model(model_n,
+                                                    trainloader,
+                                                    validloader,
+                                                    testloader,
+                                                    nepochs,
+                                                    patience=100,
+                                                    verbose =2)
+        
+        del model_n
+
+        accu_list.append(best_accuracy)
+    
+
+    #Plotting accuracy depending on pruning %
+    plt.plot(prune_r, accu_list, color='red')
+    plt.xlabel(f'Pruning part ({prune})')
+    plt.ylabel('Accuracy')
+    plt.title(f'Accuracy according to prune ration with {nepochs} additional training epochs.')
+    plt.savefig(f'Images/Try/accuracy_prune_{prune}')
+
+
 #%%
 #TRAINING
-model = import_transfer_learning_model(path=path_model)
 
-if optimizer_name == 'SGD':
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-else:
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+model = DenseNet121(cifar)
+#model = DenseNet121bis()
+total_params = sum(p.numel() for p in model.parameters())
+print(f'{total_params:,} total parameters.')
 
+#model = import_transfer_learning_model(model, cifar, path=path_model)
+model = model.to(device)
 criterion = nn.CrossEntropyLoss()
-
-'''model = pruning(model)
 
 model, loss_list_train, loss_list_valid, accuracy_list,best_accuracy = train_model(model,
                                                                                 trainloader,
                                                                                 validloader,
                                                                                 testloader,
-                                                                                n_epochs)'''
+                                                                                n_epochs,
+                                                                                patience=20)
+
+acc_overall = evaluation(model, testloader, criterion)
+
+#torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{n_epochs}.pth')
+#n_model = pruning(model)
+
+
+
+
 
 #%%
+#Time
+stop = time.time()
+execution_time = stop - start
+print(f"Program Executed in {round(execution_time,2)}s")
+
+import matplotlib.pyplot as plt
+plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/Loss_{optimizer_name}_epochs_{n_epochs}_lr_{learning_rate}.png',save=True)
 
 
 
-evaluation(model, testloader, criterion)
-#%%
-#Get missclassified images
+#Uncomment to plot images missclassified in Images/Try/
+'''
 preds, targets, images = get_predictions(model, testloader)
 
 index = np.where(preds - targets != 0)[0]
@@ -349,25 +469,13 @@ for i in range(20):
     plt.imshow(images[index[i]], cmap='gray')
     plt.title("{} ({})".format(class_names[int(preds[index[i]])], class_names[int(targets[index[i]])]), color=("red"))
     plt.savefig('Images/Try/Misclassified.png')
-    #plt.show()
+    plt.show()'''
 
-#Compute and plot confusion matrix
+#Uncomment to plot confusion matrix in Images/Try/
+'''#Compute and plot confusion matrix
 cnf_matrix = confusion_matrix(targets, preds)
 np.set_printoptions(precision=2)
 
 plt.figure(figsize=(6, 6))
 plot_confusion_matrix(cnf_matrix, classes=class_names, title='Confusion matrix')
-plt.savefig('Images/Try/Confusion_Matrix.png')
-plt.show()
-
-
-#%%
-#Time
-stop = time.time()
-execution_time = stop - start
-print(f"Program Executed in {execution_time}s")
-
-
-#import matplotlib.pyplot as plt
-#plot(n_epochs, loss_list_train, loss_list_valid)
-
+plt.savefig('Images/Try/Confusion_Matrix.png')'''

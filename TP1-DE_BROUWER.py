@@ -23,16 +23,12 @@ trainloader = DataLoader(minicifar_train,batch_size=32,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=32,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=32) 
 
-'''trainloader = minicifar_train_im
-testloader = minicifar_test_im'''
-
-classes = ('plane', 'car', 'bird', 'cat',
-           'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+###classes = ('plane', 'car', 'bird', 'cat')
 
 
 #%%
 #Functions to show an image
-def imshow(img):
+'''def imshow(img):
     img = img / 2 + 0.5     # unnormalize
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
@@ -50,10 +46,7 @@ print('Image size:'+ str(images.size(2))+ 'x'+ str(images.size(3)))
 # show images
 imshow(torchvision.utils.make_grid(images))
 # print labels
-#print(' '.join('%5s\t' % classes[labels[j]] for j in range(4)))
-
-
-
+#print(' '.join('%5s\t' % classes[labels[j]] for j in range(4)))'''
 
 
 # %%
@@ -75,7 +68,7 @@ optimizer = optim.SGD(dn.parameters(), lr=0.001, momentum=0.9)
 
 
 #Train model
-n_epochs=2
+n_epochs=50
 
 for epoch in range(n_epochs):  # loop over the dataset multiple times
 

@@ -30,8 +30,9 @@ def main():
     
     model,device = to_device(model)
     #HyperParameters
-    Niter,Bsize,lr = 1 , 32, 0.001
+    Niter,Bsize,lr = 30 , 32, 0.00001
 
+    earlystop_flag = False
     #Data import
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
@@ -42,7 +43,8 @@ def main():
 
     #best_accuracy = pretrained_model(test_loader=testloader,num_classes=100)
     #train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
-    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader,device,lr,Niter)
+
+    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag)
     print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
 
     plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)

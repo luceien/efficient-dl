@@ -114,6 +114,12 @@ def profile(model, input_size, custom_ops = {}):
 
     return total_ops, total_params
 
+import sys, os
+p = os.path.abspath('.')
+print('GERFZ',p)
+sys.path.insert(1, p)
+from models_cifar_10.densenet import DenseNet121, DenseNet121bis
+
 def main():
     # Resnet18 - Reference for CIFAR 10
     ref_params = 5586981
@@ -122,7 +128,7 @@ def main():
     # ref_params = 36500000
     # ref_flops  = 10490000000
 
-    model = resnet.ResNet18()
+    model = DenseNet121(10)#resnet.ResNet18()
     print(model)
     flops, params = profile(model, (1,3,32,32))
     flops, params = flops.item(), params.item()

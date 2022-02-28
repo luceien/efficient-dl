@@ -8,12 +8,12 @@
 # --
 
 
-n_classes_minicifar = 4
 #n_classes_minicifar = 4
+n_classes_minicifar = 10
 train_size = 0.8
 R = 5
 
-aP85BBToX56tiApXD9Gr
+
 
 # Download the entire CIFAR10 dataset
 

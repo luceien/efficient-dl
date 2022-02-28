@@ -1,12 +1,12 @@
 #%%
 model_name = 'DenseNet121'
 optimizer_name = 'Adam'
-learning_rate = 0.001
+learning_rate = 0.00001
 batch_size = 32
 n_epochs = 50
 path_model ='models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth'
 
-cifar = 4
+cifar = 10
 
 if cifar ==10:
     class_names = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
@@ -20,7 +20,7 @@ if True :
     from models_cifar_10.densenet import DenseNet121,DenseNet121bis
 
     import numpy as np 
-    #from torchinfo import summary
+    from torchinfo import summary
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
 
@@ -38,6 +38,7 @@ if True :
     import itertools
     import matplotlib.pyplot as plt
 
+
     start = time.time()
 
     trainloader = DataLoader(minicifar_train, batch_size=batch_size, sampler=train_sampler)
@@ -53,6 +54,37 @@ if True :
 #%%
 #####################################################
 #TRAIN FUNCTION with MIXUP
+
+def import_transfer_learning_model(model, n_cifar, path = 'models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth', freeze=False):
+    
+    #Load of weight
+    state_dict = torch.load(path,  map_location=device)
+    #print(state_dict.keys())
+    model.load_state_dict(state_dict['net'])
+
+    n_inputs, n_classes = 1024, n_cifar
+
+    if freeze :
+        #Freeze weights
+        for param in model.parameters():
+            param.requires_grad = False
+
+    #Replacing the last layer with a NN
+    model.linear = nn.Sequential(
+                        nn.Linear(n_inputs, 32), 
+                        nn.ReLU(), 
+                        nn.Dropout(0.4),
+                        nn.Linear(32, n_classes),                   
+                        nn.LogSoftmax(dim=1))
+
+    # Find total parameters and trainable parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f'{total_params:,} total parameters.')
+    total_trainable_params = sum(
+        p.numel() for p in model.parameters() if p.requires_grad)
+
+    print(f'{total_trainable_params:,} training parameters.')
+    return model
 
 def mix_criterion(target, labels, label_perm, l):
     return l*criterion(target,  labels) + (1-l)*criterion(target, label_perm)
@@ -167,7 +199,7 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
 
     if save_value < accuracy:
         torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{n_epochs}.pth')
-        if verbose > 1:
+        if verbose > 2:
             print("Weights saved !")
         save_value = accuracy
 
@@ -313,11 +345,11 @@ def global_pruning(model,amount,conv2d_flag=True,linear_flag=True,BN_flag=False)
 #####################################################
 #TRAINING
 
-model = DenseNet121(cifar)
+model = DenseNet121(100)
 #model = DenseNet121bis()
 
+model = import_transfer_learning_model(model, cifar, path=path_model, freeze=False)
 
-#model = import_transfer_learning_model(model, cifar, path=path_model)
 model = model.to(device)
 criterion = nn.CrossEntropyLoss()
 
@@ -326,14 +358,14 @@ model, loss_list_train, loss_list_valid, accuracy_list,best_accuracy = train_mod
                                                                                 validloader,
                                                                                 testloader,
                                                                                 n_epochs,
-                                                                                mixup=True)
+                                                                                mixup=False,
+                                                                                patience=20)
 
 acc_overall = evaluation(model, testloader, criterion)
 
-#torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{n_epochs}.pth')
+if acc_overall > 85:
+    torch.save(model.state_dict(), f'Models/{model_name}_Cifar{cifar}_{optimizer_name}_epochs_{n_epochs}.pth')
 #n_model = pruning(model)
-
-
 
 
 
@@ -343,8 +375,7 @@ stop = time.time()
 execution_time = stop - start
 print(f"Program Executed in {round(execution_time,2)}s")
 
-import matplotlib.pyplot as plt
-plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/Loss_{optimizer_name}_epochs_{n_epochs}_lr_{learning_rate}.png',save=True)
+plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/Loss_{optimizer_name}_cifar_{cifar}_epochs_{n_epochs}_lr_{learning_rate}.png',save=True)
 
 
 

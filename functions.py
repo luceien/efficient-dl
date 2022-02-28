@@ -14,12 +14,12 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 ######################################################- GENERAL FUNCTIONS -######################################################
 
-def device(model):
+def to_device(model):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Training run on : {device}")
     model.to(device)    
 
-    return model
+    return model,device
 
 def training(model,train_loader,criterion,optimizer,device):
 
@@ -83,7 +83,7 @@ def accuracy_validation(model,valid_loader,device):
     print(f'Accuracy of the network on validation images: {100 * np.round(correct / total,4)}%')
     return accuracy
 
-def earlystop(loss_valid,previous,step,nb_batch):
+def earlystopping(loss_valid,previous,step,nb_batch):
     if loss_valid/(nb_batch+1)  < previous:
         previous = loss_valid/(nb_batch+1)
         step = 0
@@ -119,7 +119,7 @@ def save_weights(model,saved_value,accuracy,Niter,model_name='DenseNet',optimize
         saved_value = accuracy
     return saved_value
 
-def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate,  EPOCHS,patience=30):
+def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=30):
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
@@ -131,7 +131,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
 
     start = timeit.default_timer()
     for epoch in range(EPOCHS):
-        print(f"Epoch n° : {epoch}/{EPOCHS} commencée")
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
 
         #Training
         loss_train = training(model,train_loader,criterion,optimizer,device)
@@ -142,7 +142,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         loss_list_valid.append(loss_valid)
 
         #Early-Stopping
-        early_stop = earlystop(loss_valid,early_stop[0],early_stop[1],nb_batch)
+        early_stop = earlystopping(loss_valid,early_stop[0],early_stop[1],nb_batch)
         print(f'Validation loss did not change for {early_stop[1]} epochs')
 
         #Validation accuracy
@@ -150,8 +150,9 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         accuracy_list.append(accuracy)
 
         #End training if early stop reach the patience
-        if early_stop[1] == patience:
-           break 
+        if earlystop:
+            if early_stop[1] == patience:
+                break 
         #Saving value to compare accuracy for weights saving.
         saved_value = save_weights(model,saved_value,accuracy,EPOCHS)
 
@@ -163,13 +164,13 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
     stop = timeit.default_timer()
     execution_time = stop - start
     print('Training is done. \n')
-    print(f"Training executed in {execution_time//3600}h{execution_time//60}min{np.round(execution_time%60,3)}s")
+    print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
     
-    return model, loss_list_train,loss_list_valid, accuracy_list,test_acc,execution_time
+    return model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time
 
 ######################################################- TP 2 - TRANSFER LEARNING -######################################################
 
-def sequential(model,device,n_inputs=1024,n_classes=10):
+def sequential(model,n_inputs=1024,n_classes=10):
     model.linear = nn.Sequential(
                         nn.Linear(n_inputs, 256), 
                         nn.ReLU(), 
@@ -177,12 +178,10 @@ def sequential(model,device,n_inputs=1024,n_classes=10):
                         nn.Linear(256, 32), 
                         nn.ReLU(), 
                         nn.Dropout(0.4),
-                        nn.Linear(32, n_classes),                   
-                        nn.LogSoftmax(dim=1))
-    model = model.to(device)
+                        nn.Linear(32, n_classes))                 
     return model
 
-def transfer_learning(model,device):
+def transfer_learning(model):
 
     #Load weights
     dict = torch.load('models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth')
@@ -193,8 +192,8 @@ def transfer_learning(model,device):
         param.requires_grad = False'''
 
     #Add MLP for Transfer Learning
-    model = sequential(model,device,n_inputs=1024,n_classes=10)
-
+    model = sequential(model,n_inputs=1024,n_classes=10)
+    
     # Summary + Find total parameters and trainable parameters
     print(summary(model))
     return model 

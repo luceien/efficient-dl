@@ -15,7 +15,7 @@ import numpy as np
 
 from functions import *
 
-def train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag,binary_flag):
+def train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag):
     #Function that simplifies readability and output
     model,train_loss_origin,valid_loss_origin,origin_accuracy,\
     best_accuracy,test, execution_time = training_model(model_origin,
@@ -26,12 +26,14 @@ def train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,early
                                                     learning_rate=lr,
                                                     EPOCHS=EPOCHS,
                                                     earlystop=earlystop_flag,
-                                                    patience=30,
-                                                    binary=binary_flag)
+                                                    patience=30)
                                                     
     return [model,train_loss_origin,valid_loss_origin,origin_accuracy,best_accuracy,test, execution_time]
 
 def main():
+    from models_cifar_10.densenet import DenseNet121, DenseNet121bis
+    from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
+    from torch.utils.data.dataloader import DataLoader
 
     #Importing the model
     model_name = 'DenseNet121'
@@ -40,17 +42,14 @@ def main():
 
     #DenseNet121bis : Model with less filters in block of DenseNet
     model_origin = DenseNet121bis(10)
+    model_origin,device = to_device(model_origin)
     #print(summary(model_origin, input_size=(32, 3, 32, 32)))
     model = deepcopy(model_origin)
 
-    model = device(model)
 
-    from models_cifar_10.densenet import DenseNet121, DenseNet121bis
-    from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
-    from torch.utils.data.dataloader import DataLoader
 
     ############################################# PARAMETERS ################################################
-    EPOCHS,Bsize,lr = 10, 32, 0.001
+    EPOCHS,Bsize,lr = 1, 32, 0.001
     #Apply binarization of weight/early stopping during training
     binary_flag, earlystop_flag = False, False
     #Flag for layers to prune
@@ -74,9 +73,9 @@ def main():
     print_prune_details(model)
 
     #Train the original model
-    origin = train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag,binary_flag)
+    origin = train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag)
     #Train the pruned model
-    pruned = train(pruned_model,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag,binary_flag)
+    pruned = train(pruned_model,trainloader,validloader,testloader,device,lr,EPOCHS,earlystop_flag)
 
     plot2(origin,pruned,Niter,lr,amount)
 

@@ -24,12 +24,13 @@ def main():
     model = DenseNet121(100)
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
 
-    model = device(model)
     
     #Import pretrained and add MLP to go from Cifar100 to Cifar10
-    model = transfer_learning(model,device)
+    model = transfer_learning(model)
+    
+    model,device = to_device(model)
     #HyperParameters
-    Niter,Bsize,lr = 2 , 32, 0.001
+    Niter,Bsize,lr = 1 , 32, 0.001
 
     #Data import
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
@@ -41,10 +42,10 @@ def main():
 
     #best_accuracy = pretrained_model(test_loader=testloader,num_classes=100)
     #train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
-    train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = training_model(model, trainloader,validloader,testloader,device,lr,Niter)
-    print(f'The best accuracy for the saved model is: {best_accuracy}%')
+    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader,device,lr,Niter)
+    print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
 
-    plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr)
+    plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)
     
 if __name__=='__main__':
     main()

@@ -11,7 +11,7 @@
 #n_classes_minicifar = 4
 n_classes_minicifar = 10
 train_size = 0.8
-R = 5
+R = 1
 
 
 

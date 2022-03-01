@@ -1,6 +1,6 @@
 #Name of Model, optimizer etc.. for Graph file's name
-model_name = 'DenseNet121'
-optimizer_name = 'Adam'
+model_name = 'DenseNet'
+optimizer_name = 'SGD'
 import numpy as np
 import matplotlib.pyplot as plt
 import timeit
@@ -11,9 +11,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 
 from sklearn.metrics import accuracy_score
 from models_cifar_10.densenet import DenseNet121
+from models_cifar_10.resnet import ResNet18,ResNet34
 #from models_cifar100.densenet import DenseNet121
 
 from functions import *
@@ -21,16 +24,17 @@ from functions import *
 
 def main():
     #Model chosen from Vgg, Densenet, Resnet
-    model = DenseNet121(100)
+    #model = DenseNet121(100)
+    model = ResNet18()
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
 
     
     #Import pretrained and add MLP to go from Cifar100 to Cifar10
-    model = transfer_learning(model)
+    #model = transfer_learning(model)
     
     model,device = to_device(model)
     #HyperParameters
-    Niter,Bsize,lr = 30 , 32, 0.00001
+    Niter,Bsize,lr = 50 , 32, 0.01
 
     earlystop_flag = False
     #Data import

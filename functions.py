@@ -123,7 +123,10 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(),lr=learning_rate)
+    #optimizer = optim.Adam(model.parameters(),lr=learning_rate)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+
     #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     #scheduler = StepLR(optimizer, step_size=70, gamma=0.1)
 
@@ -148,6 +151,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         #Validation accuracy
         accuracy = accuracy_validation(model,valid_loader,device)
         accuracy_list.append(accuracy)
+        scheduler.step()
 
         #End training if early stop reach the patience
         if earlystop:

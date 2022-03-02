@@ -10,7 +10,7 @@
 
 #n_classes_minicifar = 4
 n_classes_minicifar = 10
-train_size = 0.8
+train_size = 0.7
 R = 1
 
 
@@ -27,18 +27,20 @@ import torchvision.transforms as transforms
 
 ## Normalization is different when training from scratch and when training using an imagenet pretrained backbone
 
-normalize_scratch = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+normalize_scratch = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010), inplace=True)
 
 normalize_forimagenet = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 
 # Data augmentation is needed in order to train from scratch
 
 transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
+    transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
 
     transforms.RandomHorizontalFlip(),
 
-    transforms.RandomAffine(7),
+    transforms.RandomAffine(5),
+
+    transforms.RandomRotation(20),
 
     transforms.ColorJitter(brightness=(0.4,1), 
                             contrast=(0.4,1), 

@@ -8,12 +8,13 @@ import torchvision.transforms as transforms
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
+    #transforms.CenterCrop(16),
     transforms.RandomAffine(8),
+    transforms.RandomRotation(20),
     transforms.ColorJitter(brightness=(0.7,1), 
                             contrast=(0.7,1.2), 
                             saturation=(0.5,1.4)
                             ),
-    #transforms.RandomInvert(p=0.9),
     transforms.ToTensor()
 ])
 
@@ -43,4 +44,4 @@ for i,(data,target) in enumerate(trainloader):
 
     break
 
-f.savefig('Images/DataAugmentation/train_DA_ColorJitter_RandomInvert.png')
+f.savefig('Images/DataAugmentation/train_DA_ColorJitter_Rotate.png')

@@ -1,10 +1,10 @@
 #%%
-model_name = 'DenseNet121'
+model_name = 'ResNet18'
 optimizer_name = 'Adam'
-learning_rate = 0.00001
+learning_rate = 0.00003
 batch_size = 32
-n_epochs = 50
-path_model ='models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth'
+n_epochs = 100
+path_model ='models_cifar100/ResNet18_model_cifar100_lr_0.01.pth'
 
 cifar = 10
 
@@ -17,10 +17,9 @@ else :
 #%%
 
 if True :
-    from models_cifar_10.densenet import DenseNet121,DenseNet121bis
+    from models_cifar_10.resnet import ResNet18, ResNet9
 
     import numpy as np 
-    from torchinfo import summary
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
 
@@ -32,7 +31,6 @@ if True :
     from tqdm import tqdm
     import torch.nn.utils.prune as prune
     import time
-    from copy import deepcopy
 
     from sklearn.metrics import confusion_matrix
     import itertools
@@ -55,27 +53,38 @@ if True :
 #####################################################
 #TRAIN FUNCTION with MIXUP
 
-def import_transfer_learning_model(model, n_cifar, path = 'models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth', freeze=False):
+def import_transfer_learning_model(model, n_cifar, path = 'models_cifar100/ResNet18_model_cifar100_lr_0.01.pth', freeze=False, rang_freeze = 4):
     
-    #Load of weight
-    state_dict = torch.load(path,  map_location=device)
-    #print(state_dict.keys())
-    model.load_state_dict(state_dict['net'])
+    if path != None:
+        #Load of weight
+        state_dict = torch.load(path,  map_location=device)
+        #print(state_dict.keys())
+        model.load_state_dict(state_dict['net'])
 
-    n_inputs, n_classes = 1024, n_cifar
+    n_inputs, n_classes = model.linear.in_features, n_cifar
 
     if freeze :
         #Freeze weights
-        for param in model.parameters():
-            param.requires_grad = False
+        rang = 0
+        for child in model.children():
+            rang+=1
+            if rang < rang_freeze:
+                for param in child.parameters():
+                    param.requires_grad = False
+
+        # for param in model.parameters():
+        #     while rang < rang_freeze :
+        #         rang +=1
+        #         param.requires_grad = False
 
     #Replacing the last layer with a NN
-    model.linear = nn.Sequential(
-                        nn.Linear(n_inputs, 32), 
-                        nn.ReLU(), 
-                        nn.Dropout(0.4),
-                        nn.Linear(32, n_classes),                   
-                        nn.LogSoftmax(dim=1))
+    model.linear = nn.Sequential(nn.Linear(n_inputs, n_classes))
+    # model.linear = nn.Sequential(
+    #                     nn.Linear(n_inputs, 64), 
+    #                     nn.ReLU(), 
+    #                     nn.Dropout(0.4),
+    #                     nn.Linear(32, n_classes),                   
+    #                     nn.LogSoftmax(dim=1))                  
 
     # Find total parameters and trainable parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -89,7 +98,7 @@ def import_transfer_learning_model(model, n_cifar, path = 'models_cifar100/Dense
 def mix_criterion(target, labels, label_perm, l):
     return l*criterion(target,  labels) + (1-l)*criterion(target, label_perm)
 
-def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=False, verbose =2, patience=30):
+def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=False, verbose =2, patience=30, prune = False):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
@@ -105,6 +114,9 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
     if verbose > 1 :
         print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
     loss_train = 0
+
+    if prune and epoch == round(EPOCHS*0.4):
+        model = local_pruning(model, 0.7)
     
     #Training
     for i, data in tqdm(enumerate(train_loader, 0)):  
@@ -126,23 +138,32 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
         nb_batch = i
 
 
-        if mixup and epoch > 30:
+        if mixup : #and epoch > 30:
             lam = np.random.rand()
-            permutation = torch.randperm(32)
+            permutation = torch.randperm(inputs.shape[0])
             if torch.cuda.is_available():
                 permutation = permutation.cuda()
 
-            mixdata = lam * inputs + (1 - lam) * inputs[permutation, :]
-            label, label_perm = labels, labels[permutation]
+            try :
+                mixdata = lam * inputs + (1 - lam) * inputs[permutation, :]
 
-            optimizer.zero_grad()
-            target = model(mixdata)
-            lambda_const = random.random()
+                # if i==0:
+                #     print(f'\n\ninputs.shape = {inputs.shape}')
+                #     print(f"inputs[permutation, :].shape = {inputs[permutation, :].shape}")
+                #     print(f"mixdata.shape = {mixdata.shape}\n\n")
 
-            loss = mix_criterion(target, label, label_perm, lambda_const)
-            loss.backward()
-            optimizer.step()
-            loss_train += loss.item()    
+                label, label_perm = labels, labels[permutation]
+
+                optimizer.zero_grad()
+                target = model(mixdata)
+                lambda_const = random.random()
+
+                loss = mix_criterion(target, label, label_perm, lambda_const)
+                loss.backward()
+                optimizer.step()
+                loss_train += loss.item() 
+            except:
+                pass   
 
     loss_list_train.append(loss_train/i)
     if verbose > 1 :
@@ -185,7 +206,7 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
     correct = 0
     total = 0
     with torch.no_grad():  # torch.no_grad for TESTING
-        for data in tqdm(test_loader):
+        for data in tqdm(valid_loader):
             images, labels = data
 
             if torch.cuda.is_available():
@@ -204,7 +225,7 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
         save_value = accuracy
 
     if verbose > 1:
-        print(f'Accuracy of the network on test images: {round(accuracy, 2)}%')
+        print(f'Accuracy of the network on validation images: {round(accuracy, 2)}%')
     accuracy_list.append(accuracy)
 
     #End training if early stop reach the patience
@@ -219,7 +240,7 @@ def train_model(model, train_loader, valid_loader, test_loader, EPOCHS, mixup=Fa
 #VIZUALIZATION FUNCTIONS
 
 #Function to plot validation and train loss + accuracy on test set
-def plot(n_epochs, loss_list_train, loss_list_valid, save=False, title = f'Images/Binary/Loss_binary_{optimizer_name}_epochs_{n_epochs}_lr_{learning_rate}.png'):
+def plot(n_epochs, loss_list_train, loss_list_valid, save=False, title = f'Images/Binary/{model_name}_Loss_binary_{optimizer_name}_epochs_{n_epochs}_lr_{learning_rate}.png'):
     
     epochs = [k+1 for k in range(len(loss_list_train))]
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -246,8 +267,6 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         print("normalized confusion matrix")
-    else:
-        print('confusion matrix, without normalization')
 
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
@@ -312,7 +331,7 @@ def evaluation(model, test_loader, criterion):
 
 #Function to prune locally
 def local_pruning(model, amount):
-    for name, module in model.named_modules():
+    for _, module in model.named_modules():
     # prune 20% of connections in all 2D-conv layers 
         if isinstance(module, torch.nn.Conv2d):
             prune.l1_unstructured(module, name='weight', amount=amount)
@@ -344,11 +363,12 @@ def global_pruning(model,amount,conv2d_flag=True,linear_flag=True,BN_flag=False)
 #%%
 #####################################################
 #TRAINING
+rg_freeze = 0
+model = ResNet18()
+model = import_transfer_learning_model(model, cifar, path=path_model, freeze=True, rang_freeze=rg_freeze)
 
-model = DenseNet121(100)
-#model = DenseNet121bis()
-
-model = import_transfer_learning_model(model, cifar, path=path_model, freeze=False)
+# model = ResNet18()
+# model = import_transfer_learning_model(model, cifar, path=path_model, freeze=True, rang_freeze=7)
 
 model = model.to(device)
 criterion = nn.CrossEntropyLoss()
@@ -359,12 +379,13 @@ model, loss_list_train, loss_list_valid, accuracy_list,best_accuracy = train_mod
                                                                                 testloader,
                                                                                 n_epochs,
                                                                                 mixup=False,
-                                                                                patience=20)
+                                                                                patience=10,
+                                                                                prune=False)
 
 acc_overall = evaluation(model, testloader, criterion)
 
 if acc_overall > 85:
-    torch.save(model.state_dict(), f'Models/{model_name}_Cifar{cifar}_{optimizer_name}_epochs_{n_epochs}.pth')
+    torch.save(model.state_dict(), f'Models/{model_name}_Cifar{cifar}_{optimizer_name}_epochs_{n_epochs}_freeze_{rg_freeze}.pth')
 #n_model = pruning(model)
 
 
@@ -375,7 +396,9 @@ stop = time.time()
 execution_time = stop - start
 print(f"Program Executed in {round(execution_time,2)}s")
 
-plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/Loss_{optimizer_name}_cifar_{cifar}_epochs_{n_epochs}_lr_{learning_rate}.png',save=True)
+plot(n_epochs, loss_list_train, loss_list_valid, 
+    title = f'Images/Binary/Verif/{model_name}_Loss_{optimizer_name}_cifar_{cifar}_epochs_{n_epochs}_lr_{learning_rate}.png',
+    save=True)
 
 
 
@@ -474,7 +497,7 @@ plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/L
     return new_model"""
 
 #[NOT WORKING] Function to get lists of labels + predicted labels + images
-"""def get_predictions(model, loader):
+def get_predictions(model, loader):
 
     MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
     STD = torch.tensor([0.2023, 0.1994, 0.2010])
@@ -502,7 +525,7 @@ plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/L
         x = x.numpy().transpose(1, 2, 0)
         images_np.append(x)
 
-    return targets.numpy(), preds.numpy(), images_np"""
+    return targets.numpy(), preds.numpy(), images_np
 
 #Function to import pretrained model and initialize transfer learning
 """def import_transfer_learning_model(model, n_cifar, path = 'Models/DenseNet121_Adam_epochs_50.pth', freeze=False):
@@ -538,10 +561,10 @@ plot(n_epochs, loss_list_train, loss_list_valid, title = f'Images/Binary/Verif/L
     return model"""
 
 #Uncomment to plot images missclassified in Images/Try/
-'''
+
 preds, targets, images = get_predictions(model, testloader)
 
-index = np.where(preds - targets != 0)[0]
+'''index = np.where(preds - targets != 0)[0]
 plt.figure(figsize=(25, 4))
 
 for i in range(20):
@@ -553,10 +576,10 @@ for i in range(20):
     plt.show()'''
 
 #Uncomment to plot confusion matrix in Images/Try/
-'''#Compute and plot confusion matrix
+#Compute and plot confusion matrix
 cnf_matrix = confusion_matrix(targets, preds)
 np.set_printoptions(precision=2)
 
 plt.figure(figsize=(6, 6))
 plot_confusion_matrix(cnf_matrix, classes=class_names, title='Confusion matrix')
-plt.savefig('Images/Try/Confusion_Matrix.png')'''
+plt.savefig(f'Images/Try/Confusion_Matrix_{optimizer_name}_cifar_{cifar}_epochs_{n_epochs}_lr_{learning_rate}.png')

@@ -1,5 +1,5 @@
 #Name of Model, optimizer etc.. for Graph file's name
-model_name = 'DenseNet'
+model_name = 'ResNet'
 optimizer_name = 'SGD'
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,15 +26,18 @@ def main():
     #Model chosen from Vgg, Densenet, Resnet
     #model = DenseNet121(100)
     model = ResNet18()
+    #path_model = 'Models/DenseNet_Adam_epochs_100.pth'
+    #model = load_weights(model,path_model)
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
 
     
     #Import pretrained and add MLP to go from Cifar100 to Cifar10
-    #model = transfer_learning(model)
+    #path_model = 'Models/DenseNet_Adam_epochs_100.pth'
+    #model = transfer_learning(model,path_model)
     
     model,device = to_device(model)
     #HyperParameters
-    Niter,Bsize,lr = 50 , 32, 0.01
+    Niter,Bsize,lr = 100 , 32, 0.01
 
     earlystop_flag = False
     #Data import
@@ -48,10 +51,30 @@ def main():
     #best_accuracy = pretrained_model(test_loader=testloader,num_classes=100)
     #train_model, loss_list_train,loss_list_valid, accuracy, best_accuracy = train_model(model, trainloader,validloader,testloader,lr,Niter)
 
-    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag)
+    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag,optimizer_name)
     print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
 
     plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)
-    
+
+def test():
+    model = ResNet18()
+    path_model = 'Models/Accuracy_90/SGD_epochs_100_Acc91.05.pth'
+    model = load_weights(model,path_model)
+
+    model,device = to_device(model)
+    #HyperParameters
+    Niter,Bsize,lr = 40 , 32, 0.01
+
+    from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
+    from torch.utils.data.dataloader import DataLoader
+
+    #trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
+    #validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
+    testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True)
+
+    acc = getAccuracy(model,testloader,device)
+    print('accuracy',acc)
+
+
 if __name__=='__main__':
     main()

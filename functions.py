@@ -1,9 +1,13 @@
 import torch
-from torchinfo import summary 
+#from torchinfo import summary 
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.prune as prune
+from torch.optim.lr_scheduler import StepLR
+from typing import TypeVar
+model = TypeVar('model')
+device = TypeVar('device')
 
 from tqdm import tqdm
 import numpy as np
@@ -14,16 +18,16 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 ######################################################- GENERAL FUNCTIONS -######################################################
 
-def to_device(model):
+def to_device(model) -> model:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Training run on : {device}")
     model.to(device)    
 
     return model,device
 
-def training(model,train_loader,criterion,optimizer,device):
+def training(model,train_loader,criterion,optimizer,device) -> float:
 
-    loss_train = 0
+    loss_epoch = 0
     #Training
     for i, data in tqdm(enumerate(train_loader, 0)):  
         inputs, labels = data
@@ -39,35 +43,36 @@ def training(model,train_loader,criterion,optimizer,device):
         loss.backward()
         #Update weights
         optimizer.step()
-        loss_train += loss.item()
-        nb_batch = i     
+        loss_epoch += loss.item()
+        #nb_batch = i     
     
-    print("\n","loss par epoch train =",np.round(loss_train/(nb_batch+1),4))
-    loss = loss_train/float(nb_batch)
-    return loss
+    loss_epoch = loss_epoch/len(train_loader)
+    print("\n","loss par epoch train =",np.round(loss_epoch,4))
+    return loss_epoch
 
-def validation(model,valid_loader,criterion,optimizer,device):
-    loss_valid = 0
+def validation(model,valid_loader,criterion,optimizer,device) -> float:
+    loss_epoch = 0
     model.eval()
 
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
+         
         target = model(inputs)
         # Find the Loss
         loss = criterion(target,labels)
         # Calculate Loss
-        loss_valid += loss.item()
-        nb_batch = i  
+        loss_epoch += loss.item()
+        #nb_batch = i  
         #print("\n","loss par Batch valid=",loss.item(),"\n")       
   
 
-    print("\n","loss par epoch valid =",np.round(loss_valid/nb_batch+1,4))
-    loss = loss_valid/nb_batch
-    return loss,nb_batch
+    loss_epoch = loss_epoch/len(valid_loader)
+    print("\n","loss par epoch valid =",np.round(loss_epoch,4))
+    return loss_epoch
 
-def accuracy_validation(model,valid_loader,device):
+def getAccuracy(model,valid_loader,device) -> float:
     correct = 0
     total = 0
     with torch.no_grad():  # torch.no_grad for TESTING
@@ -79,58 +84,56 @@ def accuracy_validation(model,valid_loader,device):
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            accuracy = 100 * correct / total
-    print(f'Accuracy of the network on validation images: {100 * np.round(correct / total,4)}%')
+            accuracy = 100 * (correct / total)
     return accuracy
 
-def earlystopping(loss_valid,previous,step,nb_batch):
-    if loss_valid/(nb_batch+1)  < previous:
-        previous = loss_valid/(nb_batch+1)
-        step = 0
+def earlystopping(loss_valid,previous,count) -> tuple((float,int)):
+    if loss_valid  < previous:
+        previous = loss_valid
+        count = 0
     else:
-        step += 1
-    return previous,step
+        count += 1
+    return previous,count
 
-def accuracy_test(model,test_loader,device):
-    correct = 0
-    total = 0
-    with torch.no_grad():  # torch.no_grad for TESTING
-        for data in tqdm(test_loader):
-            images, labels = data
-            if torch.cuda.is_available():
-                images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            accuracy = 100 * correct / total
-    test_acc = 100 * np.round(correct/total,4)
-    return test_acc
-
-def save_weights(model,saved_value,accuracy,Niter,model_name='DenseNet',optimizer_name='Adam'):
+def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='Adam') -> tuple((float,float)) :
 
     if saved_value < accuracy:
         state = {
             'net': model.state_dict(),
             'accuracy': accuracy
         }
-        torch.save(state, f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
-        print("Weights saved! ")
-        saved_value = accuracy
-    return saved_value
+        
+        if accuracy > 85 :
+            test_accuracy = getAccuracy(model,test_loader,device)
+            if test_accuracy > ref_accuracy:
+                ref_accuracy = test_accuracy
 
-def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=30):
+                torch.save(state, f'Models/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                print("Weights saved! ")
+                print(f'Accuracy of the network saved on test images: {ref_accuracy}%')
+        saved_value = accuracy
+    return saved_value,ref_accuracy
+
+def load_weights(model,path) -> model:
+    #Load weights
+    dict = torch.load(path)
+    model.load_state_dict(dict['net'])
+    return model
+
+def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=25):
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
-    #optimizer = optim.Adam(model.parameters(),lr=learning_rate)
+    #optimizer = optim.AdamW(model.parameters(),lr=learning_rate)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
-
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    #scheduler = StepLR(optimizer, step_size=70, gamma=0.1)
-
-    loss_list_train, loss_list_valid, accuracy_list, early_stop, saved_value = [], [], [], [1000,0], 0
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
+    #scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
+    #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=len(train_loader), epochs=EPOCHS,verbose=True)
+    #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,8,9], gamma=0.1)
+    
+    loss_list_train, loss_list_valid, accuracy_list, saved_value = [], [], [], 0
+    early_stop =  [np.inf,0] #[Loss reference for EarlyStopping, keep the number of step]
+    ref_accuracy = 0
 
     start = timeit.default_timer()
     for epoch in range(EPOCHS):
@@ -141,27 +144,29 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         loss_list_train.append(loss_train)
 
         #Validation 
-        loss_valid, nb_batch = validation(model,valid_loader,criterion,optimizer,device)
+        loss_valid = validation(model,valid_loader,criterion,optimizer,device)
         loss_list_valid.append(loss_valid)
 
         #Early-Stopping
-        early_stop = earlystopping(loss_valid,early_stop[0],early_stop[1],nb_batch)
+        early_stop = earlystopping(loss_valid,early_stop[0],early_stop[1])
         print(f'Validation loss did not change for {early_stop[1]} epochs')
 
         #Validation accuracy
-        accuracy = accuracy_validation(model,valid_loader,device)
+        accuracy = getAccuracy(model,valid_loader,device)
+        print(f'Accuracy of the network on validation images: {accuracy}%')
         accuracy_list.append(accuracy)
-        scheduler.step()
+        #scheduler.step()
 
         #End training if early stop reach the patience
         if earlystop:
             if early_stop[1] == patience:
                 break 
+
         #Saving value to compare accuracy for weights saving.
-        saved_value = save_weights(model,saved_value,accuracy,EPOCHS)
+        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device)
 
     #Accuracy on test set by the end of the training
-    test_acc = accuracy_test(model,test_loader,device)
+    test_acc = getAccuracy(model,test_loader,device)
     print(f'Accuracy of the network on test images by the end of the training: {test_acc}%','\n')
     
     
@@ -174,7 +179,12 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
 
 ######################################################- TP 2 - TRANSFER LEARNING -######################################################
 
-def sequential(model,n_inputs=1024,n_classes=10):
+def sequential(model,n_inputs=1024,n_classes=10) -> model:
+    #model.linear = nn.Sequential(nn.Linear(n_inputs, n_classes))                 
+    '''model.linear = nn.Sequential(
+                        nn.Linear(n_inputs, 256), 
+                        nn.ReLU(), 
+                        nn.Linear(256, n_classes))  '''   
     model.linear = nn.Sequential(
                         nn.Linear(n_inputs, 256), 
                         nn.ReLU(), 
@@ -182,27 +192,24 @@ def sequential(model,n_inputs=1024,n_classes=10):
                         nn.Linear(256, 32), 
                         nn.ReLU(), 
                         nn.Dropout(0.4),
-                        nn.Linear(32, n_classes))                 
+                        nn.Linear(32, n_classes))            
     return model
 
-def transfer_learning(model):
+def transfer_learning(model,model_name,path) -> model:
 
-    #Load weights
-    dict = torch.load('models_cifar100/DenseNet121_model_cifar100_lr_0.01.pth')
-    model.load_state_dict(dict['net'])
-
+    model = load_weights(model,path,model_name)
     #Freeze weights
-    '''for param in model.parameters():
-        param.requires_grad = False'''
+    for param in model.parameters():
+        param.requires_grad = False
 
     #Add MLP for Transfer Learning
-    model = sequential(model,n_inputs=1024,n_classes=10)
+    model = sequential(model,n_inputs=512,n_classes=10)
     
     # Summary + Find total parameters and trainable parameters
-    print(summary(model))
+    #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='Densenet',optimizer_name='Adam'):
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet',optimizer_name='Adam') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -226,7 +233,7 @@ def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,mode
 
 ######################################################- TP 3 - PRUNING -######################################################
 
-def local_pruning(model):
+def local_pruning(model) -> model:
     for name, module in model.named_modules():
     # prune 20% of connections in all 2D-conv layers 
         if isinstance(module, torch.nn.Conv2d):
@@ -236,7 +243,7 @@ def local_pruning(model):
             prune.l1_unstructured(module, name='weight', amount=0.4)
     return model
 
-def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag):
+def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag) -> model:
     parameters_to_prune = []
 
     for m in model.modules():
@@ -252,7 +259,7 @@ def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag):
     model = model.to(device)
     return model
 
-def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,Niter,EPOCHS):
+def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,Niter,EPOCHS) -> None:
     #Plot the accuracy givent pruning %
     pruned_model = deepcopy(model)
     list_accuracy = []
@@ -274,7 +281,7 @@ def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,N
 
     return None    
 
-def print_prune_details(model):
+def print_prune_details(model) -> None:
     pruned_weight = 0
     total_weight = 0
 
@@ -289,7 +296,7 @@ def print_prune_details(model):
     print(f'Global sparsity: {np.round(100*float(pruned_weight/total_weight),2)}')
     return None
 
-def plot2(origin,pruned,Niter,lr,amount,model_name='Densenet',optimizer_name='Adam'):
+def plot2(origin,pruned,Niter,lr,amount,model_name='ResNet',optimizer_name='Adam') -> None:
     #[model,train_loss_origin, valid_loss_origin, origin_accuracy, best_accuracy, test_accuracy, execution_time]
 
     #Plotitng data from pruned and original training

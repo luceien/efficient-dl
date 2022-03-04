@@ -36,10 +36,13 @@ def main():
     #model = transfer_learning(model,path_model)
     
     model,device = to_device(model)
-    #HyperParameters
-    Niter,Bsize,lr = 100 , 32, 0.01
+    path_model = 'Models/Adam_epochs_100_acc89.75999999999999.pth'
+    model = load_weights(model,path_model)
 
-    earlystop_flag = False
+    #HyperParameters
+    Niter,Bsize,lr = 40 , 32, 0.01
+
+    earlystop_flag = True
     #Data import
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
@@ -58,7 +61,7 @@ def main():
 
 def test():
     model = ResNet18()
-    path_model = 'Models/Accuracy_90/SGD_epochs_100_Acc91.05.pth'
+    path_model = 'Models/Adam_epochs_100_acc89.75999999999999.pth'
     model = load_weights(model,path_model)
 
     model,device = to_device(model)
@@ -70,11 +73,15 @@ def test():
 
     #trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
     #validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
-    testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True)
+    testloader = DataLoader(minicifar_test,batch_size=Bsize)#,shuffle=True)
 
+    acc = getAccuracy(model,testloader,device)
+    print('accuracy',acc)
+    acc = getAccuracy(model,testloader,device)
+    print('accuracy',acc)
     acc = getAccuracy(model,testloader,device)
     print('accuracy',acc)
 
 
 if __name__=='__main__':
-    main()
+    test()

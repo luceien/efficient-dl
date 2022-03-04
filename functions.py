@@ -96,6 +96,9 @@ def earlystopping(loss_valid,previous,count) -> tuple((float,int)):
     return previous,count
 
 def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='Adam') -> tuple((float,float)) :
+    #Saved value: best validation accuracy so far
+    #Accuracy : validation accuracy during the epoch
+    #Ref_accuracy : Best test accuracy so far
 
     if saved_value < accuracy:
         state = {
@@ -105,12 +108,20 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
         
         if accuracy > 85 :
             test_accuracy = getAccuracy(model,test_loader,device)
+            verify = getAccuracy(model,test_loader,device)
             if test_accuracy > ref_accuracy:
-                ref_accuracy = test_accuracy
+                try: 
+                    os.remove(f'Models/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                except:
+                    pass
 
-                torch.save(state, f'Models/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                ref_accuracy = test_accuracy
+                os.makedirs('Models/Accuracy_90',exist_ok=True)
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
                 print("Weights saved! ")
                 print(f'Accuracy of the network saved on test images: {ref_accuracy}%')
+                print(f'Is aaccuracy the same??? {verify}')
+                
         saved_value = accuracy
     return saved_value,ref_accuracy
 
@@ -155,7 +166,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         accuracy = getAccuracy(model,valid_loader,device)
         print(f'Accuracy of the network on validation images: {accuracy}%')
         accuracy_list.append(accuracy)
-        #scheduler.step()
+        scheduler.step()
 
         #End training if early stop reach the patience
         if earlystop:
@@ -227,7 +238,8 @@ def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,mode
     axes[1].legend(loc='upper right')
 
     # Save figure
-    fig.savefig(f'Images/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+    os.makedirs('Images/Accuracy_90',exist_ok=True)
+    fig.savefig(f'Images/Accuracy_90/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
 
     return None 
 

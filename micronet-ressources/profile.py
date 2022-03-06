@@ -1,7 +1,8 @@
 import os
+from models_cifar_10.resnet import ResNet18
+from resnet import ResNet18
 import torch
 import torch.nn as nn
-import resnet
 
 def count_conv2d(m, x, y):
     x = x[0] # remove tuple
@@ -118,7 +119,8 @@ import sys, os
 p = os.path.abspath('.')
 print('GERFZ',p)
 sys.path.insert(1, p)
-from models_cifar_10.densenet import DenseNet121, DenseNet121bis
+
+from functions import load_weights, global_pruning, to_device
 
 def main():
     # Resnet18 - Reference for CIFAR 10
@@ -128,7 +130,15 @@ def main():
     # ref_params = 36500000
     # ref_flops  = 10490000000
 
-    model = DenseNet121(10)#resnet.ResNet18()
+    model = ResNet18()#resnet.ResNet18()
+    path_model = '../Models/Accuracy_90/Adam_pruned_epochs_100_acc90.73.pth'
+    model = load_weights(model,path_model)
+    amount = 0.735
+
+    model,device = to_device(model)
+    conv2d_flag,linear_flag,BN_flag = True,True,False
+    model = global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag)
+
     print(model)
     flops, params = profile(model, (1,3,32,32))
     flops, params = flops.item(), params.item()

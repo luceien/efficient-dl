@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 ######################################################- GENERAL FUNCTIONS -######################################################
 
-def to_device(model) -> model:
+def to_device(model) -> tuple((model,device)):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Training run on : {device}")
     model.to(device)    
@@ -26,9 +26,10 @@ def to_device(model) -> model:
     return model,device
 
 def training(model,train_loader,criterion,optimizer,device) -> float:
-
     loss_epoch = 0
+
     #Training
+    model.train()
     for i, data in tqdm(enumerate(train_loader, 0)):  
         inputs, labels = data
         if torch.cuda.is_available():
@@ -52,8 +53,9 @@ def training(model,train_loader,criterion,optimizer,device) -> float:
 
 def validation(model,valid_loader,criterion,optimizer,device) -> float:
     loss_epoch = 0
-    model.eval()
 
+    #Validation
+    model.eval()
     for i, data in tqdm(enumerate(valid_loader, 0)):  
         inputs, labels = data
         if torch.cuda.is_available():
@@ -72,14 +74,22 @@ def validation(model,valid_loader,criterion,optimizer,device) -> float:
     print("\n","loss par epoch valid =",np.round(loss_epoch,4))
     return loss_epoch
 
-def getAccuracy(model,valid_loader,device) -> float:
+def getAccuracy(model,dataloader,device) -> float:
     correct = 0
     total = 0
+    
+    #Testing
+    half=True
+    if half:
+        model.half()
+    model.eval()
     with torch.no_grad():  # torch.no_grad for TESTING
-        for data in tqdm(valid_loader):
+        for data in tqdm(dataloader):
             images, labels = data
             if torch.cuda.is_available():
                 images, labels = images.to(device), labels.to(device)
+            if half:
+                images = images.half()
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -108,10 +118,11 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
         
         if accuracy > 85 :
             test_accuracy = getAccuracy(model,test_loader,device)
-            verify = getAccuracy(model,test_loader,device)
+            print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
+            
             if test_accuracy > ref_accuracy:
                 try: 
-                    os.remove(f'Models/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
                 except:
                     pass
 
@@ -119,8 +130,7 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
                 torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
                 print("Weights saved! ")
-                print(f'Accuracy of the network saved on test images: {ref_accuracy}%')
-                print(f'Is aaccuracy the same??? {verify}')
+                
                 
         saved_value = accuracy
     return saved_value,ref_accuracy
@@ -220,7 +230,7 @@ def transfer_learning(model,model_name,path) -> model:
     #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet',optimizer_name='Adam') -> None:
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet',optimizer_name='SGD') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))

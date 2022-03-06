@@ -31,7 +31,8 @@ def train(model_origin,trainloader,validloader,testloader,device,lr,EPOCHS,early
     return [model,train_loss_origin,valid_loss_origin,origin_accuracy,best_accuracy,test, execution_time]
 
 def main():
-    from models_cifar_10.densenet import DenseNet121, DenseNet121bis
+    #from models_cifar_10.densenet import DenseNet121, DenseNet121bis
+    from models_cifar_10.resnet import ResNet18, ResNet34
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
 
@@ -41,7 +42,7 @@ def main():
     #model_origin = DenseNet121(10)
 
     #DenseNet121bis : Model with less filters in block of DenseNet
-    model_origin = DenseNet121bis(10)
+    model_origin = ResNet18()
     model_origin,device = to_device(model_origin)
     #print(summary(model_origin, input_size=(32, 3, 32, 32)))
     model = deepcopy(model_origin)

@@ -36,13 +36,13 @@ def main():
     #model = transfer_learning(model,path_model)
     
     model,device = to_device(model)
-    path_model = 'Models/Accuracy_90/Adam_pruned_epochs_100_acc90.73.pth'
+    path_model = 'Models/Accuracy_90/SGD_epochs_99_acc91.94.pth'
     model = load_weights(model,path_model)
 
     #HyperParameters
-    Niter,Bsize,lr = 100 , 32, 0.005#0.01
+    Niter,Bsize,lr = 101 , 32, 0.01#0.01
 
-    earlystop_flag = True
+    earlystop_flag = False
     #Data import
     from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
     from torch.utils.data.dataloader import DataLoader
@@ -61,7 +61,7 @@ def main():
 
 def loading():
     model = ResNet18()
-    path_model = 'Models/Accuracy_90/Adam_epochs_40_acc90.14.pth'
+    path_model = 'Models/Accuracy_90/SGD_epochs_101_acc94.23.pth'
     model = load_weights(model,path_model)
 
     model,device = to_device(model)
@@ -92,7 +92,7 @@ def pruning():
 
     #HyperParameters
     Niter,Bsize,lr = 40 , 32, 0.01
-    amount = 0.735
+    amount = 0.6
     conv2d_flag,linear_flag,BN_flag = True,True,False
     earlystop_flag = False
     model = global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag)

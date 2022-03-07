@@ -51,12 +51,12 @@ transform_train = transforms.Compose([
     normalize_scratch,
 ])
 
-# transform_train = transforms.Compose([
-#     transforms.RandomCrop(32, padding=4),
-#     transforms.RandomHorizontalFlip(),
-#     transforms.ToTensor(),
-#     normalize_scratch,
-# ])
+transform_train = transforms.Compose([
+    transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    normalize_scratch,
+])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),

@@ -79,7 +79,7 @@ def getAccuracy(model,dataloader,device) -> float:
     total = 0
     
     #Testing
-    half=True
+    half=False
     if half:
         model.half()
     model.eval()
@@ -105,7 +105,7 @@ def earlystopping(loss_valid,previous,count) -> tuple((float,int)):
         count += 1
     return previous,count
 
-def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='Adam') -> tuple((float,float)) :
+def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='SGD') -> tuple((float,float)) :
     #Saved value: best validation accuracy so far
     #Accuracy : validation accuracy during the epoch
     #Ref_accuracy : Best test accuracy so far
@@ -128,7 +128,7 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
 
                 ref_accuracy = test_accuracy
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{200+Niter}_acc{ref_accuracy}.pth')
                 print("Weights saved! ")
                 
                 
@@ -145,7 +145,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
-    #optimizer = optim.AdamW(model.parameters(),lr=learning_rate)
+    #optimizer = optim.AdamWSGD(model.parameters(),lr=learning_rate)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
     #scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
@@ -318,7 +318,7 @@ def print_prune_details(model) -> None:
     print(f'Global sparsity: {np.round(100*float(pruned_weight/total_weight),2)}')
     return None
 
-def plot2(origin,pruned,Niter,lr,amount,model_name='ResNet',optimizer_name='Adam') -> None:
+def plot2(origin,pruned,Niter,lr,amount,model_name='ResNet',optimizer_name='SGD') -> None:
     #[model,train_loss_origin, valid_loss_origin, origin_accuracy, best_accuracy, test_accuracy, execution_time]
 
     #Plotitng data from pruned and original training

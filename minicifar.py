@@ -33,23 +33,23 @@ normalize_forimagenet = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.2
 
 # Data augmentation is needed in order to train from scratch
 
-transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+# transform_train = transforms.Compose([
+#     transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
 
-    transforms.RandomHorizontalFlip(),
+#     transforms.RandomHorizontalFlip(),
 
-    transforms.RandomAffine(5),
+#     transforms.RandomAffine(5),
 
-    transforms.RandomRotation(20),
+#     transforms.RandomRotation(20),
 
-    transforms.ColorJitter(brightness=(0.4,1), 
-                            contrast=(0.4,1), 
-                            saturation=(0.3,0.9)
-                            ),
-    #transforms.RandomInvert(p=0.05),
-    transforms.ToTensor(),
-    normalize_scratch,
-])
+#     transforms.ColorJitter(brightness=(0.4,1), 
+#                             contrast=(0.4,1), 
+#                             saturation=(0.3,0.9)
+#                             ),
+#     transforms.RandomInvert(p=0.05),
+#     transforms.ToTensor(),
+#     normalize_scratch,
+# ])
 
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4, padding_mode='reflect'),

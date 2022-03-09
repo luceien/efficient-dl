@@ -116,19 +116,20 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             'accuracy': accuracy
         }
         
-        if accuracy > 85 :
+        if accuracy > 90 :
             test_accuracy = getAccuracy(model,test_loader,device)
             print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
             
             if test_accuracy > ref_accuracy:
+                print(f'Accuracy ref : {ref_accuracy}')
                 try: 
-                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{ref_accuracy}.pth')
+                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter+300}_acc{ref_accuracy}.pth')
                 except:
                     pass
 
                 ref_accuracy = test_accuracy
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{200+Niter}_acc{ref_accuracy}.pth')
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_pruned_epochs_{300+Niter}_acc{ref_accuracy}.pth')
                 print("Weights saved! ")
                 
                 
@@ -141,7 +142,7 @@ def load_weights(model,path) -> model:
     model.load_state_dict(dict['net'])
     return model
 
-def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=25):
+def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=20):
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
@@ -184,7 +185,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
                 break 
 
         #Saving value to compare accuracy for weights saving.
-        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device)
+        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,epoch,test_loader,device)
 
     #Accuracy on test set by the end of the training
     test_acc = getAccuracy(model,test_loader,device)
@@ -245,7 +246,7 @@ def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,mode
     axes[1].set_xlabel('Epochs', fontsize=14)
     axes[1].set_ylabel('Accuracy in %', fontsize=14)
     axes[1].plot([], [], ' ', label=f"Accuracy on test after pruned training:{best_accuracy}%")
-    axes[1].legend(loc='upper right')
+    axes[1].legend(loc='upper left')
 
     # Save figure
     os.makedirs('Images/Accuracy_90',exist_ok=True)
@@ -276,8 +277,8 @@ def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag) -> model
     prune.global_unstructured(parameters_to_prune,
                             pruning_method=prune.L1Unstructured,
                             amount=amount,)
-    '''for name, w in parameters_to_prune:
-        prune.remove(name,'weight')'''
+    for name, w in parameters_to_prune:
+        prune.remove(name,'weight')
     model = model.to(device)
     return model
 

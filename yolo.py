@@ -23,10 +23,11 @@ from functions import *
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 
+from resnet20 import resnet20
 def main():
     #Model chosen from Vgg, Densenet, Resnet
     #model = DenseNet121(100)
-    model = ResNet18()
+    model = resnet20()
 
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
 
@@ -36,13 +37,13 @@ def main():
     #model = transfer_learning(model,path_model)
     
     model,device = to_device(model)
-    path_model = 'Models/Accuracy_90/SGD_epochs_101_acc94.43.pth'
-    model = load_weights(model,path_model)
+    #path_model = 'Models/Accuracy_90/SGD_epochs_101_acc94.43.pth'
+    #model = load_weights(model,path_model)
 
     #HyperParameters
-    Niter,Bsize,lr = 100 , 32, 0.01#0.01
+    Niter,Bsize,lr = 400 , 32, 0.01#0.01
 
-    earlystop_flag = True
+    earlystop_flag = False
     #Data import
     
 
@@ -58,19 +59,19 @@ def main():
 
 
 def pruning():
+    #Model configuration
     model = ResNet18()
     path_model = 'Models/Accuracy_90/SGD_epochs_300_acc94.63.pth'
-
+    model = load_weights(model,path_model)
     model,device = to_device(model)
-    print_prune_details(model)
+
     #HyperParameters
-    Niter,Bsize,lr = 1 , 32, 0.01
-    amount = 0.9
+    Niter,Bsize,lr = 15 , 32, 0.01
+    amount = 0.1
     conv2d_flag,linear_flag,BN_flag = True,True,False
     earlystop_flag = False
     
-    model = load_weights(model,path_model)
-    model = global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag)
+    model,parameters_to_prune = global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag)
 
     trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
     validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
@@ -78,10 +79,10 @@ def pruning():
     print_prune_details(model)
     
 
-    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag,optimizer_name)
+    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag,parameters_to_prune,optimizer_name)
     print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
     print_prune_details(model)
     plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)
 if __name__=='__main__':
-    #main()
-    pruning()
+    main()
+    #pruning()

@@ -105,7 +105,7 @@ def earlystopping(loss_valid,previous,count) -> tuple((float,int)):
         count += 1
     return previous,count
 
-def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='SGD') -> tuple((float,float)) :
+def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,parameters_to_prune=[],model_name='ResNet',optimizer_name='SGD') -> tuple((float,float)) :
     #Saved value: best validation accuracy so far
     #Accuracy : validation accuracy during the epoch
     #Ref_accuracy : Best test accuracy so far
@@ -116,20 +116,26 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             'accuracy': accuracy
         }
         
-        if accuracy > 90 :
+        if accuracy > 85 :
             test_accuracy = getAccuracy(model,test_loader,device)
             print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
             
             if test_accuracy > ref_accuracy:
                 print(f'Accuracy ref : {ref_accuracy}')
                 try: 
-                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter+300}_acc{ref_accuracy}.pth')
+                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 except:
                     pass
 
                 ref_accuracy = test_accuracy
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_pruned_epochs_{300+Niter}_acc{ref_accuracy}.pth')
+                
+                '''if len(parameters_to_prune) > 1:
+                    print('YES PARAMETERs')
+                    for name, w in parameters_to_prune:
+                        prune.remove(name,'weight')'''
+
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_pruned_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 print("Weights saved! ")
                 
                 
@@ -142,13 +148,13 @@ def load_weights(model,path) -> model:
     model.load_state_dict(dict['net'])
     return model
 
-def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=20):
+def training_model(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,parameters_to_prune =[],patience=20):
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
-    #optimizer = optim.AdamWSGD(model.parameters(),lr=learning_rate)
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
+    optimizer = optim.AdamW(model.parameters(),lr=learning_rate)
+    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
     #scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
     #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=len(train_loader), epochs=EPOCHS,verbose=True)
     #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,8,9], gamma=0.1)
@@ -159,7 +165,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
 
     start = timeit.default_timer()
     for epoch in range(EPOCHS):
-        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} started")
 
         #Training
         loss_train = training(model,train_loader,criterion,optimizer,device)
@@ -175,9 +181,9 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
 
         #Validation accuracy
         accuracy = getAccuracy(model,valid_loader,device)
-        print(f'Accuracy of the network on validation images: {accuracy}%')
+        print(f'Accuracy of the network on validation images: {np.round(accuracy,2)}%')
         accuracy_list.append(accuracy)
-        scheduler.step()
+        #scheduler.step()
 
         #End training if early stop reach the patience
         if earlystop:
@@ -185,17 +191,18 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
                 break 
 
         #Saving value to compare accuracy for weights saving.
-        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,epoch,test_loader,device)
-
+        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device,parameters_to_prune)
+        if saved_value > 100:
+            break
     #Accuracy on test set by the end of the training
     test_acc = getAccuracy(model,test_loader,device)
-    print(f'Accuracy of the network on test images by the end of the training: {test_acc}%','\n')
+    print(f'Accuracy of the network on test images by the end of the training: {np.round(test_acc,2)}%','\n')
     
     
     stop = timeit.default_timer()
     execution_time = stop - start
     print('Training is done. \n')
-    print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
+    print(f"Training executed in {int(execution_time//3600)}h{int((execution_time%3600)//60)}min{int(np.round(execution_time%60,3))}s")
     
     return model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time
 
@@ -277,10 +284,8 @@ def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag) -> model
     prune.global_unstructured(parameters_to_prune,
                             pruning_method=prune.L1Unstructured,
                             amount=amount,)
-    for name, w in parameters_to_prune:
-        prune.remove(name,'weight')
-    model = model.to(device)
-    return model
+    
+    return model,parameters_to_prune
 
 def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,Niter,EPOCHS) -> None:
     #Plot the accuracy givent pruning %
@@ -304,7 +309,7 @@ def pruning_accuracy(model,train_loader,valid_loader,test_loader,learning_rate,N
 
     return None    
 
-def print_prune_details(model) -> None:
+def print_prune_details(model,verbose=0) -> None:
     pruned_weight = 0
     total_weight = 0
 
@@ -312,7 +317,8 @@ def print_prune_details(model) -> None:
         if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or isinstance(m,nn.BatchNorm2d):
             weight_p = float(torch.sum(m.weight == 0))
             weight_t = float(m.weight.nelement())
-            print(f"Sparsity in {m}.weight: \
+            if verbose:
+                print(f"Sparsity in {m}.weight: \
             {np.round(100. * float(weight_p/weight_t),1)}")
             pruned_weight += weight_p
             total_weight+= weight_t

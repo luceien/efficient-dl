@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torch.nn.utils.prune as prune
 from torch.optim.lr_scheduler import StepLR
 from typing import TypeVar
+from torch.autograd import Variable
 model = TypeVar('model')
 device = TypeVar('device')
 
@@ -20,7 +21,7 @@ from copy import deepcopy
 
 def to_device(model) -> tuple((model,device)):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Training run on : {device}")
+    #print(f"Training run on : {device}")
     model.to(device)    
 
     return model,device
@@ -230,7 +231,7 @@ def transfer_learning(model,model_name,path) -> model:
     #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet',optimizer_name='SGD') -> None:
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet20',optimizer_name='SGD') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -465,3 +466,105 @@ def plot_prune_accuracy(accuracy_list, prune_list, number_epochs):
     # Save figure
     os.makedirs('Images/Pruning/Iteration',exist_ok=True)
     fig.savefig(f'Images/Pruning/Iteration/Prune_from_{prune_list[0]}_to_{round(prune_list[-1],2)}.png')
+
+
+
+######################################################- TP 4 - MIX-UP -######################################################
+
+def mixup_data(x, y):
+    '''Returns mixed inputs, pairs of targets, and lambda'''
+    lam = np.random.beta(0.1, 0.1)
+    batch_size = x.size()[0]
+    index = torch.randperm(batch_size).cuda()
+
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+
+    return mixed_x, y_a, y_b, lam
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+def training_mixup(model,train_loader,criterion,optimizer,device) -> float:
+    loss_epoch = 0
+
+    #Training
+    model.train()
+    for i, data in tqdm(enumerate(train_loader, 0)):  
+        inputs, labels = data
+        if torch.cuda.is_available():
+            inputs, labels = inputs.to(device), labels.to(device)
+
+
+        inputs, targets_a, targets_b, lam = mixup_data(inputs, labels)
+        inputs, targets_a, targets_b = map(Variable, (inputs,targets_a, targets_b))
+        #Forward + backward + optimize
+        outputs = model(inputs)
+        loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
+        
+        #Clear the gradients
+        optimizer.zero_grad()
+        #Calculate gradients
+        loss.backward()
+        #Update weights
+        optimizer.step()
+        loss_epoch += loss.item()
+        #nb_batch = i     
+    
+    loss_epoch = loss_epoch/len(train_loader)
+    print("\n","loss par epoch train =",np.round(loss_epoch,4))
+    return loss_epoch
+
+
+def training_model_with_mixup(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=25):
+    
+    #NN parameters
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
+
+    loss_list_train, loss_list_valid, accuracy_list, saved_value = [], [], [], 0
+    early_stop =  [np.inf,0] #[Loss reference for EarlyStopping, keep the number of step]
+    ref_accuracy = 0
+
+    start = timeit.default_timer()
+    for epoch in range(EPOCHS):
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
+
+        #Training
+        loss_train = training_mixup(model,train_loader,criterion,optimizer,device)
+        loss_list_train.append(loss_train)
+
+        #Validation 
+        loss_valid = validation(model,valid_loader,criterion,optimizer,device)
+        loss_list_valid.append(loss_valid)
+
+        #Early-Stopping
+        early_stop = earlystopping(loss_valid,early_stop[0],early_stop[1])
+        print(f'Validation loss did not change for {early_stop[1]} epochs')
+
+        #Validation accuracy
+        accuracy = getAccuracy(model,valid_loader,device)
+        print(f'Accuracy of the network on validation images: {accuracy}%')
+        accuracy_list.append(accuracy)
+        scheduler.step()
+
+        #End training if early stop reach the patience
+        if earlystop:
+            if early_stop[1] == patience:
+                break 
+
+        #Saving value to compare accuracy for weights saving.
+        saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device)
+
+    #Accuracy on test set by the end of the training
+    test_acc = getAccuracy(model,test_loader,device)
+    print(f'Accuracy of the network on test images by the end of the training: {test_acc}%','\n')
+    
+    
+    stop = timeit.default_timer()
+    execution_time = stop - start
+    print('Training is done. \n')
+    print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
+    
+    return model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time

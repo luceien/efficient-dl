@@ -37,11 +37,11 @@ def main():
     #model = transfer_learning(model,path_model)
     
     model,device = to_device(model)
-    #path_model = 'Models/Accuracy_90/SGD_epochs_101_acc94.43.pth'
-    #model = load_weights(model,path_model)
+    path_model = 'Models/Accuracy_90/resnset20_SGD_epochs_400_acc91.48.pth'
+    model = load_weights(model,path_model)
 
     #HyperParameters
-    Niter,Bsize,lr = 400 , 32, 0.01#0.01
+    Niter,Bsize,lr = 400 , 64, 0.01#0.01
 
     earlystop_flag = False
     #Data import
@@ -60,8 +60,9 @@ def main():
 
 def pruning():
     #Model configuration
-    model = ResNet18()
+    model = resnet20()
     path_model = 'Models/Accuracy_90/SGD_epochs_300_acc94.63.pth'
+    path_model = 'Models/Accuracy_90/Resnet20_E400_A_94.17.pth'
     model = load_weights(model,path_model)
     model,device = to_device(model)
 
@@ -79,10 +80,11 @@ def pruning():
     print_prune_details(model)
     
 
-    train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag,parameters_to_prune,optimizer_name)
-    print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
-    print_prune_details(model)
-    plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)
+    #train_model, loss_list_train,loss_list_valid, accuracy_list, best_accuracy, test_accuracy, _ = training_model(model, trainloader,validloader,testloader ,device,lr,Niter,earlystop_flag,parameters_to_prune,optimizer_name)
+    #print(f'The best accuracy on validation for the saved model is: {best_accuracy}%')
+    accuracy = getAccuracy(model,test_loader,device)
+    print(f'The best accuracy on validation for the saved model is: {accuracy}%')
+    #plot1(loss_list_train,loss_list_valid, accuracy_list, test_accuracy,Niter,lr)
 if __name__=='__main__':
     main()
     #pruning()

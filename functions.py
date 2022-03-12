@@ -25,7 +25,7 @@ def to_device(model) -> tuple((model,device)):
 
     return model,device
 
-def training(model,train_loader,criterion,optimizer,device) -> float:
+def training(model,train_loader,criterion,optimizer,device,mixup_flag) -> float:
     loss_epoch = 0
 
     #Training
@@ -34,6 +34,15 @@ def training(model,train_loader,criterion,optimizer,device) -> float:
         inputs, labels = data
         if torch.cuda.is_available():
             inputs, labels = inputs.to(device), labels.to(device)
+        
+        if mixup_flag:
+            pass
+            # bs = 32
+            # lam = np.random.beta(2,2)
+            # h = model(inputs)
+
+            # h_mixed = lam*inputs[:bs] + (1-lam)*inputs[bs:]
+            # y_mixed = lam*labels[:bs] + (1-lam)*labels[bs:]
         #Clear the gradients
         optimizer.zero_grad()
         
@@ -116,14 +125,14 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             'accuracy': accuracy
         }
         
-        if accuracy > 85 :
+        if accuracy > 90 :
             test_accuracy = getAccuracy(model,test_loader,device)
             print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
             
             if test_accuracy > ref_accuracy:
                 print(f'Accuracy ref : {ref_accuracy}')
                 try: 
-                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
+                    os.remove(f'Models/Accuracy_90/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 except:
                     pass
 
@@ -135,7 +144,7 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
                     for name, w in parameters_to_prune:
                         prune.remove(name,'weight')'''
 
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_pruned_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
+                torch.save(state, f'Models/Accuracy_90/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 print("Weights saved! ")
                 
                 
@@ -152,9 +161,9 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
     
     #NN parameters
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(),lr=learning_rate)
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
-    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
+    #optimizer = optim.AdamW(model.parameters(),lr=learning_rate)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
     #scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
     #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=len(train_loader), epochs=EPOCHS,verbose=True)
     #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,8,9], gamma=0.1)
@@ -168,7 +177,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         print(f"Epoch n° : {epoch+1}/{EPOCHS} started")
 
         #Training
-        loss_train = training(model,train_loader,criterion,optimizer,device)
+        loss_train = training(model,train_loader,criterion,optimizer,device,True)
         loss_list_train.append(loss_train)
 
         #Validation 
@@ -183,7 +192,7 @@ def training_model(model, train_loader,valid_loader,test_loader,device,learning_
         accuracy = getAccuracy(model,valid_loader,device)
         print(f'Accuracy of the network on validation images: {np.round(accuracy,2)}%')
         accuracy_list.append(accuracy)
-        #scheduler.step()
+        scheduler.step()
 
         #End training if early stop reach the patience
         if earlystop:
@@ -238,7 +247,7 @@ def transfer_learning(model,model_name,path) -> model:
     #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet',optimizer_name='SGD') -> None:
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='RN_modify',optimizer_name='SGD') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))

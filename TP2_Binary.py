@@ -3,6 +3,7 @@ optimizer_name = 'Adam'
 #IMPORT
 import numpy as np
 import torch
+import os
 from torchinfo import summary 
 import torch.optim as optim
 import torch.nn as nn
@@ -13,7 +14,7 @@ import matplotlib.pyplot as plt
 #import torchvision
 import numpy as np
 
-def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,earlystop=True,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
+def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPOCHS,earlystop=False,patience=30,binary=True)  -> tuple(['models_cifar_10.densenet.DenseNet',list,list,list,float]):
   loss_list_train = []
   loss_list_valid = []
   accuracy_list = []
@@ -129,7 +130,8 @@ def train_model(model, train_loader,valid_loader,test_loader,learning_rate,  EPO
 
     if save_value < accuracy:
         if not binary:
-            torch.save(model.state_dict(), f'Models/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
+            os.makedirs('Models/Training',exist_ok=True)
+            torch.save(model.state_dict(), f'Models/Training/{model_name}_{optimizer_name}_epochs_{Niter}.pth')
             print("Weights saved! ")
         save_value = accuracy
     #End training if early stop reach the patience
@@ -178,12 +180,14 @@ def half_model(model,test_loader,half=True):
     return accuracy
 
 
-from models_cifar_10.densenet import DenseNet121
+from models_cifar_10.densenet import DenseNet121,  DenseNet121bis
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 from binaryconnect import *
 
-model = DenseNet121()
+#model = DenseNet121()
+model = DenseNet121(10)
+
 #weights = torch.load("Models/DenseNet121_Adam_epochs_25.pth")
 #model.load_state_dict(weights['net'])
 
@@ -192,7 +196,7 @@ model = DenseNet121()
 #print(f'Accuracy of the saved model : {accuracy_before_half}%')
 
 ############### PARAMETERS ##################
-Niter,Bsize,lr = 200, 32, 0.001
+Niter,Bsize,lr = 400, 32, 0.001
 #torch.save(model,f'Models/HALF_{model_name}_{optimizer_name}_epochs_{Niter}.pth')
 #Apply binarization of weight during training
 binary_flag = False
@@ -202,7 +206,7 @@ trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
 validloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=valid_sampler)
 testloader = DataLoader(minicifar_test,batch_size=Bsize,shuffle=True) 
 
-#Time
+'''#Time
 start = timeit.default_timer()
 #Running test on original model
 accuracy_before_half = half_model(model,testloader,half=False)
@@ -224,8 +228,8 @@ print(f"Program Executed in {int(execution_time//60)}min{np.round(execution_time
 #Final score
 print(f'The accuracy of the half model is: {accuracy}%\n\
  The old one was : {accuracy_before_half}%')
-
-'''#Time
+'''
+#Time
 start = timeit.default_timer()
 #Training function
 model,loss_list_train,loss_list_valid,\
@@ -265,4 +269,3 @@ axes[1].legend(loc='upper left')
 fig.savefig(f'Images/Binary/Loss_binary_{binary_flag}_{optimizer_name}_time{int(execution_time)}s_epochs_{Niter}_lr_{lr}.png')
 
 
-'''

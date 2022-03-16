@@ -7,20 +7,22 @@ from models_cifar_10.resnet import ResNet18
 from minicifar import minicifar_train,minicifar_test,train_sampler,valid_sampler
 from torch.utils.data.dataloader import DataLoader
 
-from functions_lucien import *
+#from functions_lucien import *
+from functions import *
 from resnet20 import resnet20
 
 
 def main():
     #Model chosen from Vgg, Densenet, Resnet
-    model = ResNet18()
+    factorization_flag = False
+    model = resnet20(factorization_flag)
     model,device = to_device(model)
-    path_model = 'Models\Accuracy_90\resnset20_SGD_epochs_400_acc91.9.pth'
-    model = load_weights(model,path_model)
+    #path_model = 'Models\Accuracy_90\resnset20_SGD_epochs_400_acc91.9.pth'
+    #model = load_weights(model,path_model)
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
 
     #HyperParameters
-    Niter, Bsize, lr = 100, 32, 0.01
+    Niter, Bsize, lr = 399, 32, 0.01
     earlystop_flag = False
 
     trainloader = DataLoader(minicifar_train,batch_size=Bsize,sampler=train_sampler)
@@ -33,16 +35,17 @@ def main():
 
 
 
-def pruning(amount=0.6):
+def pruning(amount=0.5):
 
-    model = resnet20()
-    path_model = 'Models\Accuracy_90\resnset20_SGD_epochs_400_acc91.9.pth'
-    model = load_weights(model,path_model)
+    factorization_flag = False
+    model = resnet20(factorization_flag)
+    #path_model = 'Models\Accuracy_90\resnset20_SGD_epochs_400_acc91.9.pth'
+    #model = load_weights(model,path_model)
 
     model, device = to_device(model)
 
     #HyperParameters
-    Niter, Bsize, lr = 40 , 32, 0.01
+    Niter, Bsize, lr = 398 , 32, 0.01
     conv2d_flag, linear_flag, BN_flag = True, True, False
     earlystop_flag = False
     model = global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag)

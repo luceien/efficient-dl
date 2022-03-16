@@ -123,13 +123,13 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             
             if test_accuracy > ref_accuracy:
                 try: 
-                    os.remove(f'Models/Accuracy_90/{optimizer_name}_epochs_{200+Niter}_acc{ref_accuracy}.pth')
+                    os.remove(f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}.pth')
                 except:
                     pass
 
                 ref_accuracy = test_accuracy
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_epochs_{200+Niter}_acc{ref_accuracy}.pth')
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}.pth')
                 print("Weights saved! ")
                 
                 

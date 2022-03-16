@@ -8,6 +8,7 @@ from torch.optim.lr_scheduler import StepLR
 from typing import TypeVar
 model = TypeVar('model')
 device = TypeVar('device')
+from torch.autograd import Variable
 
 from tqdm import tqdm
 import numpy as np
@@ -132,19 +133,19 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             if test_accuracy > ref_accuracy:
                 print(f'Accuracy ref : {ref_accuracy}')
                 try: 
-                    os.remove(f'Models/Accuracy_90/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
+                    os.remove(f'Models/Accuracy_90/Resnet20/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 except:
                     pass
 
                 ref_accuracy = test_accuracy
-                os.makedirs('Models/Accuracy_90',exist_ok=True)
+                os.makedirs('Models/Accuracy_90/Resnet20',exist_ok=True)
                 
-                '''if len(parameters_to_prune) > 1:
-                    print('YES PARAMETERs')
+                if len(parameters_to_prune) > 1:
+                    
                     for name, w in parameters_to_prune:
-                        prune.remove(name,'weight')'''
+                        prune.remove(name,'weight')
 
-                torch.save(state, f'Models/Accuracy_90/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
+                torch.save(state, f'Models/Accuracy_90/Resnet20/resnset20_{optimizer_name}_epochs_{Niter}_acc{np.round(ref_accuracy,2)}.pth')
                 print("Weights saved! ")
                 
                 
@@ -247,7 +248,7 @@ def transfer_learning(model,model_name,path) -> model:
     #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='RN_modify',optimizer_name='SGD') -> None:
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='RN_modify',optimizer_name='SGD', sup='') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -265,8 +266,8 @@ def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,mode
     axes[1].legend(loc='upper left')
 
     # Save figure
-    os.makedirs('Images/Accuracy_90',exist_ok=True)
-    fig.savefig(f'Images/Accuracy_90/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+    os.makedirs('Images/Accuracy_90/Resnet20',exist_ok=True)
+    fig.savefig(f'Images/Accuracy_90/Resnet20/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}{sup}.png')
 
     return None 
 
@@ -282,7 +283,7 @@ def local_pruning(model) -> model:
             prune.l1_unstructured(module, name='weight', amount=0.4)
     return model
 
-def global_pruning(model,amount,device,conv2d_flag,linear_flag,BN_flag) -> model:
+def global_pruning(model,amount,conv2d_flag,linear_flag,BN_flag) -> tuple((model,list)):
     parameters_to_prune = []
 
     for m in model.modules():
@@ -372,3 +373,130 @@ def plot2(origin,pruned,Niter,lr,amount,model_name='ResNet',optimizer_name='SGD'
     fig.savefig(f'Images/Pruning/Loss/Loss_{optimizer_name}_epochs_{Niter}_lr_{lr}_C2D.png')
 
     return None
+
+######################################################- TP 4 - MIX-UP -######################################################
+
+def mixup_data(x, y):
+    '''Returns mixed inputs, pairs of targets, and lambda'''
+    lam = np.random.beta(0.1, 0.1)
+    batch_size = x.size()[0]
+    index = torch.randperm(batch_size).cuda()
+
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+
+    return mixed_x, y_a, y_b, lam
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+def training_mixup(model,train_loader,criterion,optimizer,device) -> float:
+    loss_epoch = 0
+
+    #Training
+    model.train()
+    for i, data in tqdm(enumerate(train_loader, 0)):  
+        inputs, labels = data
+        if torch.cuda.is_available():
+            inputs, labels = inputs.to(device), labels.to(device)
+
+
+        inputs, targets_a, targets_b, lam = mixup_data(inputs, labels)
+        inputs, targets_a, targets_b = map(Variable, (inputs,targets_a, targets_b))
+        #Forward + backward + optimize
+        outputs = model(inputs)
+        loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
+        
+        #Clear the gradients
+        optimizer.zero_grad()
+        #Calculate gradients
+        loss.backward()
+        #Update weights
+        optimizer.step()
+        loss_epoch += loss.item()
+        #nb_batch = i     
+    
+    loss_epoch = loss_epoch/len(train_loader)
+    print("\n","loss par epoch train =",np.round(loss_epoch,4))
+    return loss_epoch
+
+
+def training_model_with_mixup(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,parameters_to_prune =[],patience=20):
+    
+    #NN parameters
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9,weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=EPOCHS)#,verbose = True) #Verbose : print the learning rate
+
+    loss_list_train, loss_list_valid, accuracy_list, saved_value = [], [], [], 0
+    early_stop =  [np.inf,0] #[Loss reference for EarlyStopping, keep the number of step]
+    ref_accuracy = 0
+
+    start = timeit.default_timer()
+    for epoch in range(EPOCHS):
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
+
+        #Training
+        loss_train = training_mixup(model,train_loader,criterion,optimizer,device)
+        loss_list_train.append(loss_train)
+
+        #Validation 
+        loss_valid = validation(model,valid_loader,criterion,optimizer,device)
+        loss_list_valid.append(loss_valid)
+
+        #Early-Stopping
+        early_stop = earlystopping(loss_valid,early_stop[0],early_stop[1])
+        print(f'Validation loss did not change for {early_stop[1]} epochs')
+
+        #Validation accuracy
+        accuracy = getAccuracy(model,valid_loader,device)
+        print(f'Accuracy of the network on validation images: {accuracy}%')
+        accuracy_list.append(accuracy)
+        scheduler.step()
+
+        #End training if early stop reach the patience
+        if earlystop:
+            if early_stop[1] == patience:
+                break 
+
+        #Saving value to compare accuracy for weights saving.
+        if len(parameters_to_prune) == 0:
+            saved_value,ref_accuracy = save_weights(model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device,parameters_to_prune,model_name='ResNet',optimizer_name='SGD')
+
+    #Accuracy on test set by the end of the training
+    test_acc = getAccuracy(model,test_loader,device)
+
+    if len(parameters_to_prune) != 0:
+
+        for name, w in parameters_to_prune:
+            prune.remove(name,'weight')
+
+        state = {
+            'net': model.state_dict(),
+            'accuracy': test_acc
+        }
+
+        torch.save(state, f'Models/Accuracy_90/Resnet20/resnet20_E{EPOCHS}_acc{np.round(test_acc,2)}.pth')
+        print("Weights saved! ")
+
+    print(f'Accuracy of the network on test images by the end of the training: {test_acc}%','\n')
+    
+    
+    stop = timeit.default_timer()
+    execution_time = stop - start
+    print('Training is done. \n')
+    print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
+    
+    return model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time
+
+def countZeroWeights(model):
+    pruned_weight = 0
+    total_weight  = 0
+    for param in model.modules():
+        if isinstance(param, nn.Conv2d) or isinstance(param, nn.Linear) or isinstance(param,nn.BatchNorm2d):
+            weight_p = float(torch.sum(param.weight == 0))
+            weight_t = float(torch.sum(param.weight !=0 ))
+            pruned_weight += weight_p
+            total_weight += weight_t + weight_p
+            #zeros += torch.sum((param == 0).int()).data[0]
+    return pruned_weight, total_weight

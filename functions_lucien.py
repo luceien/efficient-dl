@@ -1,3 +1,4 @@
+from decimal import DecimalException
 import torch
 #from torchinfo import summary 
 import torch.optim as optim
@@ -106,7 +107,7 @@ def earlystopping(loss_valid,previous,count) -> tuple((float,int)):
         count += 1
     return previous,count
 
-def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device,model_name='ResNet',optimizer_name='SGD') -> tuple((float,float)) :
+def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,device, add ='', model_name='ResNet',optimizer_name='SGD', verbose = 1) -> tuple((float,float)) :
     #Saved value: best validation accuracy so far
     #Accuracy : validation accuracy during the epoch
     #Ref_accuracy : Best test accuracy so far
@@ -116,21 +117,22 @@ def save_weights(model,ref_accuracy,saved_value,accuracy,Niter,test_loader,devic
             'net': model.state_dict(),
             'accuracy': accuracy
         }
-        
         if accuracy > 90 :
             test_accuracy = getAccuracy(model,test_loader,device)
-            print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
+            if verbose > 1 :
+                print(f'Accuracy of the network saved on test images: {test_accuracy}%.')
             
             if test_accuracy > ref_accuracy:
                 try: 
-                    os.remove(f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}.pth')
+                    os.remove(f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}{add}.pth')
                 except:
                     pass
 
                 ref_accuracy = test_accuracy
                 os.makedirs('Models/Accuracy_90',exist_ok=True)
-                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}.pth')
-                print("Weights saved! ")
+                torch.save(state, f'Models/Accuracy_90/{optimizer_name}_MU_epochs_{Niter}_acc{ref_accuracy}{add}.pth')
+                if verbose > 1 :
+                    print("Weights saved! ")
                 
                 
         saved_value = accuracy
@@ -231,7 +233,7 @@ def transfer_learning(model,model_name,path) -> model:
     #print(summary(model))
     return model 
 
-def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet20',optimizer_name='SGD') -> None:
+def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,model_name='ResNet20',optimizer_name='SGD', add ='') -> None:
     epochs = [k+1 for k in range(len(loss_list_train))]
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
@@ -250,9 +252,11 @@ def plot1(loss_list_train,loss_list_valid, accuracy, best_accuracy,Niter,lr,mode
 
     # Save figure
     os.makedirs('Images/Accuracy_90',exist_ok=True)
-    fig.savefig(f'Images/Accuracy_90/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}.png')
+    fig.savefig(f'Images/Accuracy_90/Loss_{model_name}_{optimizer_name}_epochs_{Niter}_lr_{lr}{add}.png')
 
     return None 
+
+
 
 ######################################################- TP 3 - PRUNING -######################################################
 
@@ -515,7 +519,6 @@ def training_mixup(model,train_loader,criterion,optimizer,device) -> float:
     print("\n","loss par epoch train =",np.round(loss_epoch,4))
     return loss_epoch
 
-
 def training_model_with_mixup(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS,earlystop,patience=25):
     
     #NN parameters
@@ -568,3 +571,116 @@ def training_model_with_mixup(model, train_loader,valid_loader,test_loader,devic
     print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
     
     return model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time
+
+
+
+######################################################- TP 2-2 - QUANTIZATION -######################################################
+
+#Model class extension to include quantization
+class QuantizedResNet18(nn.Module):
+    def __init__(self, model_fp32):
+        super(QuantizedResNet18, self).__init__()
+        # QuantStub converts tensors from floating point to quantized.
+        # This will only be used for inputs.
+        self.quant = torch.quantization.QuantStub()
+        # DeQuantStub converts tensors from quantized to floating point.
+        # This will only be used for outputs.
+        self.dequant = torch.quantization.DeQuantStub()
+        # FP32 model
+        self.model_fp32 = model_fp32
+
+    def forward(self, x):
+        # manually specify where tensors will be converted from floating
+        # point to quantized in the quantized model
+        x = self.quant(x)
+        x = self.model_fp32(x)
+        # manually specify where tensors will be converted from quantized
+        # to floating point in the quantized model
+        x = self.dequant(x)
+        return x
+
+
+def training_model_quantized(model, train_loader,valid_loader,test_loader,device,learning_rate, EPOCHS, add = '', verbose =1):
+    
+    #NN parameters 
+    fused_model = deepcopy(model)
+
+    model.train()
+    fused_model.train()
+    fused_model = torch.quantization.fuse_modules(fused_model, [["conv1", "bn1", "relu"]], inplace=True)
+
+    for module_name, module in fused_model.named_children():
+        if "layer" in module_name:
+            for _, basic_block in module.named_children():
+                torch.quantization.fuse_modules(basic_block, [["conv1", "bn1", "relu1"], ["conv2", "bn2"]], inplace=True)
+                for sub_block_name, sub_block in basic_block.named_children():
+                    if sub_block_name == "downsample":
+                        torch.quantization.fuse_modules(sub_block, [["0", "1"]], inplace=True)
+
+
+    # Model and fused model should be equivalent.
+    # model.eval()
+    # fused_model.eval()
+
+    quantized_model = QuantizedResNet18(model_fp32=fused_model)
+
+    quantization_config = torch.quantization.get_default_qconfig("fbgemm")
+    # Custom quantization configurations
+    # quantization_config = torch.quantization.default_qconfig
+    # quantization_config = torch.quantization.QConfig(activation=torch.quantization.MinMaxObserver.with_args(dtype=torch.quint8), weight=torch.quantization.MinMaxObserver.with_args(dtype=torch.qint8, qscheme=torch.per_tensor_symmetric))
+    quantized_model.qconfig = quantization_config
+
+
+    print("Training QAT Model...\n")
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(quantized_model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    
+    loss_list_train, loss_list_valid, accuracy_list, saved_value = [], [], [], 0
+    ref_accuracy = 0
+
+    start = timeit.default_timer()
+
+
+    for epoch in range(EPOCHS):
+        print(f"Epoch n° : {epoch+1}/{EPOCHS} commencée")
+
+        #Training
+        torch.quantization.prepare_qat(quantized_model, inplace=True)
+        loss_train = training(quantized_model,train_loader,criterion,optimizer,device)
+        loss_list_train.append(loss_train)
+
+        #Validation 
+        quantized_model = torch.quantization.convert(quantized_model, inplace=True)
+        loss_valid = validation(quantized_model,valid_loader,criterion,optimizer,device)
+        loss_list_valid.append(loss_valid)
+
+
+        #Validation accuracy
+        accuracy = getAccuracy(quantized_model,valid_loader,device)
+        print(f'Accuracy of the network on validation images: {accuracy}%')
+        accuracy_list.append(accuracy)
+        scheduler.step()
+
+        #Saving value to compare accuracy for weights saving.
+        saved_value,ref_accuracy = save_weights(quantized_model,ref_accuracy,saved_value,accuracy,EPOCHS,test_loader,device, add = add , verbose=verbose)
+
+    #Accuracy on test set by the end of the training
+    test_acc = getAccuracy(quantized_model,test_loader,device)
+    print(f'Accuracy of the network on test images by the end of the training: {test_acc}%','\n')
+    
+    
+    stop = timeit.default_timer()
+    execution_time = stop - start
+
+    if verbose > 1 :
+        print('Training is done. \n')
+        print(f"Training executed in {int(execution_time//3600)}h{int(execution_time//60)}min{int(np.round(execution_time%60,3))}s")
+    
+    return quantized_model, loss_list_train,loss_list_valid, accuracy_list,saved_value,test_acc,execution_time
+
+
+
+
+
+#
